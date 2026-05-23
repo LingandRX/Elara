@@ -1,0 +1,7 @@
+CompileFlags:
+    CompilationDatabase: build
+    Add: [-DESP_PLATFORM]
+    Remove: [-f*, -m*]
+---
+Diagnostics:
+    UnusedIncludes: Strict
