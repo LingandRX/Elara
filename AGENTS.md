@@ -3,6 +3,18 @@
 ## 项目概述
 基于 ESP-IDF 的 ESP32-S3 C 项目
 
+## 硬件引脚
+
+| 功能 | GPIO |
+|------|------|
+| SPI MOSI | 13 |
+| SPI CLK | 10 |
+| LCD DC | 11 |
+| LCD CS | 12 |
+| LCD RST | 9 |
+| I2C SDA | 47 |
+| I2C SCL | 48 |
+
 ## 架构
 - **目标芯片**: ESP32-S3 (16MB Flash, 8MB PSRAM 八线模式 @ 80MHz)
 - **开发框架**: ESP-IDF v6.0.1
