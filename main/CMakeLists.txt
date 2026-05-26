@@ -1,2 +1,13 @@
-idf_component_register(SRCS "main.c"
-                    INCLUDE_DIRS ".")
+idf_component_register(
+    SRCS 
+        "main.c"
+        "display/sh8601.c"
+        "ui/chat_ui.c"
+        "comm/uart_comm.c"
+    INCLUDE_DIRS 
+        "."
+        "display"
+        "ui"
+        "comm"
+        "font"
+)

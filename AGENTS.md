@@ -19,18 +19,9 @@
 - **目标芯片**: ESP32-S3 (16MB Flash, 8MB PSRAM 八线模式 @ 80MHz)
 - **开发框架**: ESP-IDF v6.0.1
 - **入口点**: `main/main.c` → `user_top_init()`
-- **应用层**: `components/user_app/` - 应用程序逻辑和 FreeRTOS 任务
-- **BSP 层**: `components/ws2812_bsp/` - WS2812 LED 驱动抽象层
 
 ## 组件结构
 ```
-components/
-  user_app/          - 应用层 (依赖 ws2812_bsp)
-  ws2812_bsp/        - 板级支持包
-    - LEDS_COUNT = 2 (WS2812 LED 数量)
-    - LEDS_PIN = 15 (LED 数据线 GPIO 引脚)
-    - 使用 RMT 外设进行精确时序控制
-    - 依赖: driver, espressif__led_strip, esp_driver_ledc, esp_driver_gpio
 ```
 
 ## 依赖项
@@ -69,10 +60,7 @@ idf.py fullclean
 - **烧录方式**: JTAG (通过内置 USB)
 - **串口号**: COM5 (Windows)
 - **OpenOCD 配置**: `board/esp32s3-builtin.cfg`
-- **LED 硬件**: 2x WS2812 连接在 GPIO 15
 
 ## 开发注意事项
-- LED 动画使用 FreeRTOS 任务实现 (详见 `user_app.c`)
-- LED 颜色格式: GRB (在 ws2812_bsp 中配置)
 - RMT 时钟分辨率: 10MHz
 - `.clangd` 已配置为 ESP 平台，编译数据库位于 `build/`

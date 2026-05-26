@@ -1,263 +1,110 @@
-
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "driver/spi_master.h"
-#include "driver/gpio.h"
 #include "esp_log.h"
-#include "esp_lcd_panel_io.h"
-#include "esp_lcd_panel_vendor.h"
-#include "esp_lcd_panel_ops.h"
-#include "lvgl.h"
-#include "lv_demos.h"
-#include "esp_timer.h"
-#include "esp_lcd_sh8601.h"
-#include "i2c_bsp.h"
-#include "touch_bsp.h"
-#include "esp_vfs_fat.h"
-#include "sdmmc_cmd.h"
-#include "driver/sdmmc_host.h"
-#define LCD_HOST  SPI3_HOST
+#include "esp_system.h"
+#include "driver/gpio.h"
 
-static SemaphoreHandle_t lvgl_mux = NULL;
-#define EXAMPLE_LVGL_TICK_PERIOD_MS    2
-#define EXAMPLE_LVGL_TASK_MAX_DELAY_MS 500
-#define EXAMPLE_LVGL_TASK_MIN_DELAY_MS 1
-#define EXAMPLE_LVGL_TASK_STACK_SIZE   (4 * 1024)
-#define EXAMPLE_LVGL_TASK_PRIORITY     2
+#include "display/sh8601.h"
+#include "ui/chat_ui.h"
+#include "comm/uart_comm.h"
 
-#define Rotate 1        //旋转90
-#define Normal 0        //正常显示
-#define Direction Normal
+static const char *TAG = "MAIN";
 
-#if (Direction == Normal) 
-  #define EXAMPLE_LCD_H_RES 170   //宽度 水平分辨率
-  #define EXAMPLE_LCD_V_RES 320   //高度 竖直分辨率
-#elif (Direction == Rotate)
-  #define EXAMPLE_LCD_H_RES 320   //宽度 水平分辨率
-  #define EXAMPLE_LCD_V_RES 170   //高度 竖直分辨率
-#endif
+// 全局设备和UI
+static sh8601_dev_t lcd;
+static ChatUI chatUI;
+static QueueHandle_t cmdQueue;
 
-#define EXAMPLE_LCD_DMA_Line (EXAMPLE_LCD_V_RES / 2)
+// 命令处理任务
+static void cmd_process_task(void *pvParam) {
+    UartCmd cmd;
+    while (1) {
+        if (xQueueReceive(cmdQueue, &cmd, pdMS_TO_TICKS(100)) == pdTRUE) {
+            switch (cmd.type) {
+                case CMD_STATUS:
+                    ESP_LOGI(TAG, "Status: %s", cmd.state);
+                    chat_ui_set_status(&chatUI, cmd.state, NULL);
+                    chat_ui_redraw(&chatUI);
+                    break;
 
-#define EXAMPLE_USE_Disp       1
-#define EXAMPLE_USE_TOUCH      0
+                case CMD_CHAT:
+                    ESP_LOGI(TAG, "Chat [%s]: %s", cmd.role, cmd.text);
+                    chat_ui_add_msg(&chatUI, cmd.role, cmd.text, cmd.emotion, cmd.chunk);
+                    chat_ui_redraw(&chatUI);
+                    // LED 根据情绪变化
+                    if (strcmp(cmd.emotion, "happy") == 0) {
+                        // ws2812_set_all(0, 50, 0); // 绿色
+                    } else if (strcmp(cmd.emotion, "sad") == 0) {
+                        // ws2812_set_all(0, 0, 50); // 蓝色
+                    } else {
+                        // ws2812_set_all(50, 50, 0); // 黄色
+                    }
+                    // ws2812_update();
+                    break;
 
+                case CMD_CLEAR:
+                    ESP_LOGI(TAG, "Clear chat");
+                    chat_ui_clear(&chatUI);
+                    chat_ui_welcome(&chatUI);
+                    break;
 
-#define PIN_NUM_RST  9
-#define PIN_NUM_CLK  10
-#define PIN_NUM_DC   11
-#define PIN_NUM_CS   12
-#define PIN_NUM_MOSI 13
-#define EXAMPLE_LVGL_TICK_PERIOD_MS    2
-#if (EXAMPLE_USE_Disp == 1)
-static const sh8601_lcd_init_cmd_t lcd_init_cmds[] = 
-{
-  #if (Direction == Normal) 
-  //{0x36, (uint8_t []){0x00}, 1, 0},	
-  #elif (Direction == Rotate)
-  {0x36, (uint8_t []){0x70}, 1, 0},	
-  #endif
-
-  //{0x3a, (uint8_t []){0x55}, 1, 0},
-  {0xb2, (uint8_t []){0x0c,0x0c,0x00,0x33,0x33}, 5, 0},
-  {0xb7, (uint8_t []){0x35}, 1, 0},
-  {0xbb, (uint8_t []){0x13}, 1, 0},
-  {0xc0, (uint8_t []){0x2c}, 1, 0},
-  {0xc2, (uint8_t []){0x01}, 1, 0},
-  {0xc3, (uint8_t []){0x0b}, 1, 0},
-  {0xc4, (uint8_t []){0x20}, 1, 0},
-  {0xc6, (uint8_t []){0x0f}, 1, 0},
-  {0xd0, (uint8_t []){0xa4,0xa1}, 2, 0},
-  {0xd6, (uint8_t []){0xa1}, 1, 0},
-  {0xe0, (uint8_t []){0x00,0x03,0x07,0x08,0x07,0x15,0x2A,0x44,0x42,0x0A,0x17,0x18,0x25,0x27}, 14, 0},
-  {0xe1, (uint8_t []){0x00,0x03,0x08,0x07,0x07,0x23,0x2A,0x43,0x42,0x09,0x18,0x17,0x25,0x27}, 14, 0},
-  {0x21, (uint8_t []){0x21}, 0, 0},
-  {0x11, (uint8_t []){0x11}, 0, 120},
-  {0x29, (uint8_t []){0x29}, 0, 0},
-};
-#endif
-#if EXAMPLE_USE_TOUCH
-static void example_lvgl_touch_cb(lv_indev_drv_t *drv, lv_indev_data_t *data)
-{
-  uint16_t tp_x;
-  uint16_t tp_y;
-  uint8_t win = 0;
-  win = getTouch(&tp_x,&tp_y);
-  if(win)
-  {
-#if (Direction==Normal)
-    data->point.x = tp_x;
-    data->point.y = tp_y;
-#else
-    data->point.x = tp_y;
-    data->point.y = EXAMPLE_LCD_V_RES - tp_x;
-#endif
-    data->state = LV_INDEV_STATE_PRESSED;
-    ESP_LOGD("tp_user", "Touch position: %d,%d", tp_x, tp_y);
-  }
-  else
-  {
-    data->state = LV_INDEV_STATE_RELEASED;
-  }
-}
-#endif
-static bool example_notify_lvgl_flush_ready(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_io_event_data_t *edata, void *user_ctx)
-{
-  lv_disp_drv_t *disp_driver = (lv_disp_drv_t *)user_ctx;
-  lv_disp_flush_ready(disp_driver);
-  return false;
-}
-static void example_lvgl_flush_cb(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color_map)
-{
-  esp_lcd_panel_handle_t panel_handle = (esp_lcd_panel_handle_t) drv->user_data;
-#if (Direction == Normal) 
-  int offsetx1 = area->x1 + 35;
-  int offsetx2 = area->x2 + 35;
-  int offsety1 = area->y1;
-  int offsety2 = area->y2;
-#elif (Direction == Rotate)
-  int offsetx1 = area->x1;
-  int offsetx2 = area->x2;
-  int offsety1 = area->y1 + 35;
-  int offsety2 = area->y2 + 35;
-#endif
-  // copy a buffer's content to a specific area of the display
-  esp_lcd_panel_draw_bitmap(panel_handle, offsetx1, offsety1, offsetx2 + 1, offsety2 + 1, color_map);
-}
-static void example_increase_lvgl_tick(void *arg)
-{
-  /* Tell LVGL how many milliseconds has elapsed */
-  lv_tick_inc(EXAMPLE_LVGL_TICK_PERIOD_MS);
-}
-static bool example_lvgl_lock(int timeout_ms)
-{
-  assert(lvgl_mux && "bsp_display_start must be called first");
-
-  const TickType_t timeout_ticks = (timeout_ms == -1) ? portMAX_DELAY : pdMS_TO_TICKS(timeout_ms);
-  return xSemaphoreTake(lvgl_mux, timeout_ticks) == pdTRUE;
-}
-static void example_lvgl_unlock(void)
-{
-  assert(lvgl_mux && "bsp_display_start must be called first");
-  xSemaphoreGive(lvgl_mux);
-}
-static void example_lvgl_port_task(void *arg)
-{
-  uint32_t task_delay_ms = EXAMPLE_LVGL_TASK_MAX_DELAY_MS;
-  for(;;)
-  {
-    // Lock the mutex due to the LVGL APIs are not thread-safe
-    if (example_lvgl_lock(-1))
-    {
-      task_delay_ms = lv_timer_handler();
-      // Release the mutex
-      example_lvgl_unlock();
+                default:
+                    break;
+            }
+        }
     }
-    if (task_delay_ms > EXAMPLE_LVGL_TASK_MAX_DELAY_MS)
-    {
-      task_delay_ms = EXAMPLE_LVGL_TASK_MAX_DELAY_MS;
-    }
-    else if (task_delay_ms < EXAMPLE_LVGL_TASK_MIN_DELAY_MS)
-    {
-      task_delay_ms = EXAMPLE_LVGL_TASK_MIN_DELAY_MS;
-    }
-    vTaskDelay(pdMS_TO_TICKS(task_delay_ms));
-  }
 }
-void app_main(void)
-{
-  static lv_disp_draw_buf_t disp_buf; // contains internal graphic buffer(s) called draw buffer(s)
-  static lv_disp_drv_t disp_drv;      // contains callback functions
-  spi_bus_config_t buscfg = 
-  {
-    .mosi_io_num = PIN_NUM_MOSI,
-    .sclk_io_num = PIN_NUM_CLK,
-    .quadwp_io_num = -1,
-    .quadhd_io_num = -1,
-    .max_transfer_sz =  EXAMPLE_LCD_H_RES * EXAMPLE_LCD_DMA_Line * sizeof(uint16_t), // RGB565 , 传输屏幕的1/10行的数据
-  };
-  ESP_ERROR_CHECK(spi_bus_initialize(LCD_HOST, &buscfg, SPI_DMA_CH_AUTO));
-#if (EXAMPLE_USE_Disp == 1)
-  esp_lcd_panel_io_handle_t io_handle = NULL;
-  esp_lcd_panel_io_spi_config_t io_config = 
-  {
-    .dc_gpio_num = PIN_NUM_DC,
-    .cs_gpio_num = PIN_NUM_CS,
-    .pclk_hz = 20 * 1000 * 1000,
-    .lcd_cmd_bits = 8,
-    .lcd_param_bits = 8,
-    .spi_mode = 0,
-    .trans_queue_depth = 10,
-    .on_color_trans_done = example_notify_lvgl_flush_ready,
-    .user_ctx = &disp_drv,
-  };
-  sh8601_vendor_config_t vendor_config = 
-  {
-    .init_cmds = lcd_init_cmds,
-    .init_cmds_size = sizeof(lcd_init_cmds) / sizeof(lcd_init_cmds[0]),
-  };
-  ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)LCD_HOST, &io_config, &io_handle));
 
-  esp_lcd_panel_handle_t panel_handle = NULL;
-  const esp_lcd_panel_dev_config_t panel_config = 
-  {
-    .reset_gpio_num = PIN_NUM_RST,
-    .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
-    .bits_per_pixel = 16,
-    .vendor_config = &vendor_config,
-    .data_endian = LCD_RGB_DATA_ENDIAN_BIG,
-  };
-  ESP_ERROR_CHECK(esp_lcd_new_panel_sh8601(io_handle, &panel_config, &panel_handle));
-  ESP_ERROR_CHECK(esp_lcd_panel_reset(panel_handle));
-  ESP_ERROR_CHECK(esp_lcd_panel_init(panel_handle));
-  //ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_handle, true));
-  I2C_master_Init();
-#if EXAMPLE_USE_TOUCH
-  touch_Init();
-#endif
-  lv_init();
-  lv_color_t *buf1 = heap_caps_malloc(EXAMPLE_LCD_H_RES * EXAMPLE_LCD_DMA_Line * sizeof(lv_color_t), MALLOC_CAP_DMA);
-  assert(buf1);
-  lv_color_t *buf2 = heap_caps_malloc(EXAMPLE_LCD_H_RES * EXAMPLE_LCD_DMA_Line * sizeof(lv_color_t), MALLOC_CAP_DMA);
-  assert(buf2);
-  lv_disp_draw_buf_init(&disp_buf, buf1, buf2, EXAMPLE_LCD_H_RES * EXAMPLE_LCD_DMA_Line);
+void app_main(void) {
+    ESP_LOGI(TAG, "ESP32-S3 Chat Device Starting...");
 
-  lv_disp_drv_init(&disp_drv);
-  disp_drv.hor_res = EXAMPLE_LCD_H_RES;
-  disp_drv.ver_res = EXAMPLE_LCD_V_RES;
-  disp_drv.flush_cb = example_lvgl_flush_cb;
-  disp_drv.draw_buf = &disp_buf;
-  disp_drv.user_data = panel_handle;
-  lv_disp_drv_register(&disp_drv);
-#if EXAMPLE_USE_TOUCH
-  static lv_indev_drv_t indev_drv;    // Input device driver (Touch)
-  lv_indev_drv_init(&indev_drv);
-  indev_drv.type = LV_INDEV_TYPE_POINTER;
-  indev_drv.read_cb = example_lvgl_touch_cb;
-  lv_indev_drv_register(&indev_drv);
-#endif
-  const esp_timer_create_args_t lvgl_tick_timer_args = 
-  {
-    .callback = &example_increase_lvgl_tick,
-    .name = "lvgl_tick"
-  };
-  esp_timer_handle_t lvgl_tick_timer = NULL;
-  ESP_ERROR_CHECK(esp_timer_create(&lvgl_tick_timer_args, &lvgl_tick_timer));
-  ESP_ERROR_CHECK(esp_timer_start_periodic(lvgl_tick_timer, EXAMPLE_LVGL_TICK_PERIOD_MS * 1000));
-  lvgl_mux = xSemaphoreCreateMutex();
-  assert(lvgl_mux);
-  xTaskCreate(example_lvgl_port_task, "LVGL", EXAMPLE_LVGL_TASK_STACK_SIZE, NULL, EXAMPLE_LVGL_TASK_PRIORITY, NULL);
-  if (example_lvgl_lock(-1))
-  {
-    lv_demo_widgets();      /* A widgets example */
-    //lv_demo_music();          /* A modern, smartphone-like music player demo. */
-    // lv_demo_stress();      /* A stress test for LVGL. */
-    //lv_demo_benchmark();    /* A demo to measure the performance of LVGL or to compare different settings. */
-    // Release the mutex
-    example_lvgl_unlock();
-  }
-#endif
+    // 初始化 LED
+    // ws2812_init();
+    // ws2812_set_all(50, 50, 50); // 白色启动指示
+    // ws2812_update();
+
+    // 初始化 LCD
+    if (!sh8601_init(&lcd)) {
+        ESP_LOGE(TAG, "LCD init failed!");
+        return;
+    }
+    sh8601_set_rotation(&lcd, 0); // 竖屏 170x320
+    sh8601_fill_screen(&lcd, SH8601_COLOR_BLACK);
+
+    // 初始化 UI
+    chat_ui_init(&chatUI, &lcd);
+
+    // 创建命令队列
+    cmdQueue = xQueueCreate(16, sizeof(UartCmd));
+    if (cmdQueue == NULL) {
+        ESP_LOGE(TAG, "Queue create failed!");
+        return;
+    }
+
+    // 初始化 UART
+    if (!uart_comm_init(&cmdQueue)) {
+        ESP_LOGE(TAG, "UART init failed!");
+        return;
+    }
+
+    // 显示欢迎界面
+    chat_ui_welcome(&chatUI);
+
+    // 启动 UART 接收任务
+    xTaskCreate(uart_rx_task, "uart_rx", 4096, NULL, 5, NULL);
+
+    // 启动命令处理任务
+    xTaskCreate(cmd_process_task, "cmd_proc", 4096, NULL, 5, NULL);
+
+    // LED 恢复空闲状态
+    // ws2812_set_all(0, 20, 0); // 绿色呼吸
+    // ws2812_update();
+
+    ESP_LOGI(TAG, "All tasks started. Ready.");
+
+    // 主循环
+    while (1) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
 }
