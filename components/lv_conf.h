@@ -36,9 +36,9 @@
 #define LV_ATTRIBUTE_FAST_MEM_USE_IRAM 1
 
 /* 字体配置 */
-#define LV_FONT_MONTSERRAT_12 1
 #define LV_FONT_MONTSERRAT_14 1
 #define LV_FONT_MONTSERRAT_16 1
+
 #define LV_FONT_DEFAULT &lv_font_montserrat_16
 
 /* 启用 UTF-8 支持 */

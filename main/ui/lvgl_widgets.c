@@ -4,6 +4,7 @@
  */
 
 #include "lvgl_widgets.h"
+#include "lvgl.h"
 #include <string.h>
 
 /* 颜色定义 */
@@ -35,7 +36,7 @@ lv_obj_t *lvgl_create_message_bubble(lv_obj_t *parent, const char *role, const c
 
     if (strcmp(role, "user") == 0) {
         bubble_color = COLOR_USER_BUB;
-        role_text = "你";
+        role_text = "You";
         role_color = COLOR_LABEL_USER;
         lv_obj_align(bubble, LV_ALIGN_TOP_RIGHT, -4, 0);
     } else if (strcmp(role, "ai") == 0) {
@@ -45,7 +46,7 @@ lv_obj_t *lvgl_create_message_bubble(lv_obj_t *parent, const char *role, const c
         lv_obj_align(bubble, LV_ALIGN_TOP_LEFT, 4, 0);
     } else {
         bubble_color = COLOR_SYS_BUB;
-        role_text = "系统";
+        role_text = "System";
         role_color = COLOR_TEXT_DIM;
         lv_obj_align(bubble, LV_ALIGN_TOP_MID, 0, 0);
     }
@@ -56,14 +57,14 @@ lv_obj_t *lvgl_create_message_bubble(lv_obj_t *parent, const char *role, const c
     lv_obj_t *role_label = lv_label_create(bubble);
     lv_label_set_text(role_label, role_text);
     lv_obj_set_style_text_color(role_label, role_color, 0);
-    lv_obj_set_style_text_font(role_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(role_label, LV_FONT_DEFAULT, 0);
     lv_obj_align(role_label, LV_ALIGN_TOP_LEFT, 0, 0);
 
     /* 消息文本 */
     lv_obj_t *msg_text = lv_label_create(bubble);
     lv_label_set_text(msg_text, text);
     lv_obj_set_style_text_color(msg_text, COLOR_TEXT, 0);
-    lv_obj_set_style_text_font(msg_text, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(msg_text, LV_FONT_DEFAULT, 0);
     lv_label_set_long_mode(msg_text, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(msg_text, lv_obj_get_width(bubble) - 16);
     lv_obj_align(msg_text, LV_ALIGN_TOP_LEFT, 0, 16);
@@ -101,7 +102,7 @@ lv_obj_t *lvgl_create_status_indicator(lv_obj_t *parent, const char *state, lv_c
     lv_obj_t *label = lv_label_create(indicator);
     lv_label_set_text(label, state);
     lv_obj_set_style_text_color(label, COLOR_TEXT, 0);
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(label, LV_FONT_DEFAULT, 0);
     lv_obj_align(label, LV_ALIGN_LEFT_MID, 22, 0);
 
     return indicator;
@@ -116,7 +117,7 @@ lv_obj_t *lvgl_create_animated_label(lv_obj_t *parent, const char *text) {
     lv_obj_t *label = lv_label_create(parent);
     lv_label_set_text(label, text);
     lv_obj_set_style_text_color(label, COLOR_TEXT, 0);
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(label, LV_FONT_DEFAULT, 0);
 
     /* 添加淡入动画 */
     lv_anim_t a;

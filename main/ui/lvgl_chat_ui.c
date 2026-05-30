@@ -54,11 +54,11 @@ static lv_obj_t *create_animated_message_bubble(MsgRole role, const char *text);
  */
 static void create_status_bar(void) {
     status_bar = lv_obj_create(main_container);
-    lv_obj_set_size(status_bar, LV_HOR_RES, 28);
+    lv_obj_set_size(status_bar, LV_HOR_RES, 32);
     lv_obj_set_style_bg_color(status_bar, lv_color_hex(0x0F0F19), 0);
     lv_obj_set_style_border_width(status_bar, 0, 0);
     lv_obj_set_style_radius(status_bar, 0, 0);
-    lv_obj_set_style_pad_all(status_bar, 4, 0);
+    lv_obj_set_style_pad_all(status_bar, 6, 0);
     lv_obj_align(status_bar, LV_ALIGN_TOP_LEFT, 0, 0);
 
     /* 情绪指示器 */
@@ -71,9 +71,9 @@ static void create_status_bar(void) {
 
     /* 状态文本 */
     status_label = lv_label_create(status_bar);
-    lv_label_set_text(status_label, "空闲");
+    lv_label_set_text(status_label, "Idle");
     lv_obj_set_style_text_color(status_label, COLOR_TEXT, 0);
-    lv_obj_set_style_text_font(status_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(status_label, LV_FONT_DEFAULT, 0);
     lv_obj_align(status_label, LV_ALIGN_LEFT_MID, 22, 0);
 }
 
@@ -82,12 +82,12 @@ static void create_status_bar(void) {
  */
 static void create_chat_area(void) {
     chat_area = lv_obj_create(main_container);
-    lv_obj_set_size(chat_area, LV_HOR_RES, LV_VER_RES - 48); /* 减去状态栏和底部栏 */
+    lv_obj_set_size(chat_area, LV_HOR_RES, LV_VER_RES - 56); /* 减去状态栏(32)和底部栏(24) */
     lv_obj_set_style_bg_color(chat_area, COLOR_BG, 0);
     lv_obj_set_style_border_width(chat_area, 0, 0);
     lv_obj_set_style_radius(chat_area, 0, 0);
     lv_obj_set_style_pad_all(chat_area, 4, 0);
-    lv_obj_align(chat_area, LV_ALIGN_TOP_LEFT, 0, 28);
+    lv_obj_align(chat_area, LV_ALIGN_TOP_LEFT, 0, 32);  /* 状态栏高度 32 */
     lv_obj_set_scroll_dir(chat_area, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(chat_area, LV_SCROLLBAR_MODE_AUTO);
 }
@@ -113,18 +113,18 @@ static void create_progress_bar(void) {
  */
 static void create_bottom_bar(void) {
     bottom_bar = lv_obj_create(main_container);
-    lv_obj_set_size(bottom_bar, LV_HOR_RES, 20);
+    lv_obj_set_size(bottom_bar, LV_HOR_RES, 24);
     lv_obj_set_style_bg_color(bottom_bar, lv_color_hex(0x0F0F19), 0);
     lv_obj_set_style_border_width(bottom_bar, 0, 0);
     lv_obj_set_style_radius(bottom_bar, 0, 0);
-    lv_obj_set_style_pad_all(bottom_bar, 2, 0);
+    lv_obj_set_style_pad_all(bottom_bar, 4, 0);
     lv_obj_align(bottom_bar, LV_ALIGN_BOTTOM_LEFT, 0, 0);
 
     /* 底部文本 */
     lv_obj_t *bottom_label = lv_label_create(bottom_bar);
     lv_label_set_text(bottom_label, "Elara Chat");
     lv_obj_set_style_text_color(bottom_label, COLOR_TEXT_DIM, 0);
-    lv_obj_set_style_text_font(bottom_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(bottom_label, LV_FONT_DEFAULT, 0);
     lv_obj_align(bottom_label, LV_ALIGN_CENTER, 0, 0);
 }
 
@@ -158,7 +158,7 @@ static lv_obj_t *create_message_bubble(MsgRole role, const char *text) {
     lv_obj_t *role_label = lv_label_create(bubble);
     switch (role) {
         case MSG_ROLE_USER:
-            lv_label_set_text(role_label, "你");
+            lv_label_set_text(role_label, "You");
             lv_obj_set_style_text_color(role_label, COLOR_LABEL_USER, 0);
             break;
         case MSG_ROLE_AI:
@@ -166,18 +166,18 @@ static lv_obj_t *create_message_bubble(MsgRole role, const char *text) {
             lv_obj_set_style_text_color(role_label, COLOR_LABEL_AI, 0);
             break;
         case MSG_ROLE_SYSTEM:
-            lv_label_set_text(role_label, "系统");
+            lv_label_set_text(role_label, "System");
             lv_obj_set_style_text_color(role_label, COLOR_TEXT_DIM, 0);
             break;
     }
-    lv_obj_set_style_text_font(role_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(role_label, LV_FONT_DEFAULT, 0);
     lv_obj_align(role_label, LV_ALIGN_TOP_LEFT, 0, 0);
 
     /* 消息文本 */
     lv_obj_t *msg_text = lv_label_create(bubble);
     lv_label_set_text(msg_text, text);
     lv_obj_set_style_text_color(msg_text, COLOR_TEXT, 0);
-    lv_obj_set_style_text_font(msg_text, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(msg_text, LV_FONT_DEFAULT, 0);
     lv_label_set_long_mode(msg_text, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(msg_text, lv_obj_get_width(bubble) - 16);
     lv_obj_align(msg_text, LV_ALIGN_TOP_LEFT, 0, 16);
@@ -321,15 +321,15 @@ void lvgl_chat_ui_set_status(const char *state, const char *emotion) {
     /* 更新情绪指示器 */
     if (emotion_indicator) {
         lv_color_t color;
-        if (strcmp(state, "空闲") == 0 || strcmp(state, "idle") == 0) {
+        if (strcmp(state, "idle") == 0) {
             color = COLOR_STATUS_IDLE;
-        } else if (strcmp(state, "聆听") == 0 || strcmp(state, "listening") == 0) {
+        } else if (strcmp(state, "listening") == 0) {
             color = COLOR_STATUS_LISTEN;
-        } else if (strcmp(state, "思考") == 0 || strcmp(state, "thinking") == 0) {
+        } else if (strcmp(state, "thinking") == 0) {
             color = COLOR_STATUS_THINK;
-        } else if (strcmp(state, "回复") == 0 || strcmp(state, "replying") == 0) {
+        } else if (strcmp(state, "replying") == 0) {
             color = COLOR_STATUS_REPLY;
-        } else if (strcmp(state, "错误") == 0 || strcmp(state, "error") == 0) {
+        } else if (strcmp(state, "error") == 0) {
             color = COLOR_STATUS_ERR;
         } else {
             color = COLOR_STATUS_IDLE;
@@ -361,7 +361,7 @@ void lvgl_chat_ui_clear(void) {
     }
 
     /* 重置状态 */
-    lvgl_chat_ui_set_status("空闲", "idle");
+    lvgl_chat_ui_set_status("idle", "idle");
 }
 
 /**
@@ -388,7 +388,6 @@ void lvgl_chat_ui_welcome(void) {
     lv_obj_t *icon = lv_label_create(welcome_bubble);
     lv_label_set_text(icon, LV_SYMBOL_HOME);
     lv_obj_set_style_text_color(icon, COLOR_LABEL_AI, 0);
-    lv_obj_set_style_text_font(icon, &lv_font_montserrat_14, 0);
     lv_obj_align(icon, LV_ALIGN_TOP_MID, 0, 0);
 
     /* 淡入动画 */
@@ -403,16 +402,16 @@ void lvgl_chat_ui_welcome(void) {
 
     /* 欢迎标题 */
     lv_obj_t *title = lv_label_create(welcome_bubble);
-    lv_label_set_text(title, "Elara 聊天助手");
+    lv_label_set_text(title, "Elara Chat Assistant");
     lv_obj_set_style_text_color(title, COLOR_TEXT, 0);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(title, LV_FONT_DEFAULT, 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 30);
 
     /* 欢迎信息 */
     lv_obj_t *msg = lv_label_create(welcome_bubble);
-    lv_label_set_text(msg, "你好！我是 Elara，一个 AI 聊天助手。\n有什么我可以帮助你的吗？");
+    lv_label_set_text(msg, "Hello! I'm Elara, an AI chat assistant.\nHow can I help you?");
     lv_obj_set_style_text_color(msg, COLOR_TEXT, 0);
-    lv_obj_set_style_text_font(msg, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(msg, LV_FONT_DEFAULT, 0);
     lv_label_set_long_mode(msg, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(msg, lv_obj_get_width(welcome_bubble) - 24);
     lv_obj_align(msg, LV_ALIGN_TOP_MID, 0, 55);
@@ -429,7 +428,7 @@ void lvgl_chat_ui_welcome(void) {
     }
 
     /* 更新状态 */
-    lvgl_chat_ui_set_status("空闲", "idle");
+    lvgl_chat_ui_set_status("idle", "idle");
 }
 
 /**
