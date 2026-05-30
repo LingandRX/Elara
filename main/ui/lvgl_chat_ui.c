@@ -35,6 +35,7 @@ static lv_obj_t *status_label = NULL;
 static lv_obj_t *emotion_indicator = NULL;
 static lv_obj_t *chat_area = NULL;
 static lv_obj_t *bottom_bar = NULL;
+static lv_obj_t *progress_bar = NULL;  /* 新增：进度条 */
 
 /* 消息列表 */
 static ChatMessage messages[MAX_MESSAGES];
@@ -43,6 +44,10 @@ static int msg_head = 0;
 
 /* 当前情绪 */
 static char current_emotion[16] = "";
+
+/* 前向声明 */
+static lv_obj_t *create_message_bubble(MsgRole role, const char *text);
+static lv_obj_t *create_animated_message_bubble(MsgRole role, const char *text);
 
 /**
  * 创建状态栏
@@ -85,6 +90,22 @@ static void create_chat_area(void) {
     lv_obj_align(chat_area, LV_ALIGN_TOP_LEFT, 0, 28);
     lv_obj_set_scroll_dir(chat_area, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(chat_area, LV_SCROLLBAR_MODE_AUTO);
+}
+
+/**
+ * 创建进度条
+ */
+static void create_progress_bar(void) {
+    progress_bar = lv_bar_create(main_container);
+    lv_obj_set_size(progress_bar, LV_HOR_RES - 40, 6);
+    lv_bar_set_range(progress_bar, 0, 100);
+    lv_bar_set_value(progress_bar, 0, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(progress_bar, lv_color_hex(0x2D2D37), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(progress_bar, COLOR_LABEL_AI, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(progress_bar, 3, LV_PART_MAIN);
+    lv_obj_set_style_radius(progress_bar, 3, LV_PART_INDICATOR);
+    lv_obj_align(progress_bar, LV_ALIGN_BOTTOM_MID, 0, -25);
+    lv_obj_add_flag(progress_bar, LV_OBJ_FLAG_HIDDEN);  /* 默认隐藏 */
 }
 
 /**
@@ -191,6 +212,7 @@ void lvgl_chat_ui_init(void) {
     /* 创建 UI 元素 */
     create_status_bar();
     create_chat_area();
+    create_progress_bar();  /* 新增：进度条 */
     create_bottom_bar();
 
     ESP_LOGI(TAG, "LVGL chat UI initialized");
@@ -278,8 +300,8 @@ void lvgl_chat_ui_add_msg(const char *role, const char *text, const char *emotio
         }
     }
 
-    /* 创建消息气泡 */
-    create_message_bubble(msg_role, text);
+    /* 创建带动画的消息气泡 */
+    create_animated_message_bubble(msg_role, text);
 
     /* 滚动到底部 */
     lv_obj_scroll_to_y(chat_area, LV_COORD_MAX, LV_ANIM_ON);
@@ -362,12 +384,22 @@ void lvgl_chat_ui_welcome(void) {
     lv_obj_set_style_border_width(welcome_bubble, 0, 0);
     lv_obj_align(welcome_bubble, LV_ALIGN_TOP_MID, 0, 20);
 
-    /* 欢迎图标 */
+    /* 欢迎图标（带动画） */
     lv_obj_t *icon = lv_label_create(welcome_bubble);
     lv_label_set_text(icon, LV_SYMBOL_HOME);
     lv_obj_set_style_text_color(icon, COLOR_LABEL_AI, 0);
     lv_obj_set_style_text_font(icon, &lv_font_montserrat_14, 0);
     lv_obj_align(icon, LV_ALIGN_TOP_MID, 0, 0);
+
+    /* 淡入动画 */
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, welcome_bubble);
+    lv_anim_set_values(&a, LV_OPA_TRANSP, LV_OPA_COVER);
+    lv_anim_set_time(&a, 500);
+    lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_style_opa);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+    lv_anim_start(&a);
 
     /* 欢迎标题 */
     lv_obj_t *title = lv_label_create(welcome_bubble);
@@ -389,6 +421,13 @@ void lvgl_chat_ui_welcome(void) {
     lv_obj_update_layout(welcome_bubble);
     lv_obj_set_height(welcome_bubble, LV_SIZE_CONTENT);
 
+    /* 显示进度条动画 */
+    if (progress_bar) {
+        lv_obj_clear_flag(progress_bar, LV_OBJ_FLAG_HIDDEN);
+        lv_bar_set_value(progress_bar, 0, LV_ANIM_OFF);
+        lv_bar_set_value(progress_bar, 100, LV_ANIM_ON);
+    }
+
     /* 更新状态 */
     lvgl_chat_ui_set_status("空闲", "idle");
 }
@@ -398,4 +437,42 @@ void lvgl_chat_ui_welcome(void) {
  */
 lv_obj_t *lvgl_chat_ui_get_container(void) {
     return main_container;
+}
+
+/**
+ * 设置进度条值
+ * @param value 进度值 (0-100)
+ */
+void lvgl_chat_ui_set_progress(int value) {
+    if (progress_bar) {
+        if (value < 0) {
+            /* 隐藏进度条 */
+            lv_obj_add_flag(progress_bar, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            /* 显示并更新进度 */
+            lv_obj_clear_flag(progress_bar, LV_OBJ_FLAG_HIDDEN);
+            lv_bar_set_value(progress_bar, value, LV_ANIM_ON);
+        }
+    }
+}
+
+/**
+ * 添加带动画效果的消息气泡
+ */
+static lv_obj_t *create_animated_message_bubble(MsgRole role, const char *text) {
+    lv_obj_t *bubble = create_message_bubble(role, text);
+
+    if (bubble) {
+        /* 添加淡入动画 */
+        lv_anim_t a;
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, bubble);
+        lv_anim_set_values(&a, LV_OPA_TRANSP, LV_OPA_COVER);
+        lv_anim_set_time(&a, 300);
+        lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_style_opa);
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+        lv_anim_start(&a);
+    }
+
+    return bubble;
 }

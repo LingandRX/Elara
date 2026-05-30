@@ -11,6 +11,7 @@ typedef enum {
     CMD_STATUS,     // {"type":"status","state":"..."}
     CMD_CHAT,       // {"type":"chat","role":"...","text":"..."}
     CMD_CLEAR,      // {"type":"cmd","action":"clear"}
+    CMD_PROGRESS,   // {"type":"progress","value":0-100}
     CMD_UNKNOWN
 } CmdType;
 
@@ -22,6 +23,7 @@ typedef struct {
     char emotion[16];   // for CMD_CHAT
     bool chunk;         // for CMD_CHAT
     int seq;            // for CMD_CHAT
+    int progress;       // for CMD_PROGRESS (0-100)
 } UartCmd;
 
 // 初始化 UART0 (GPIO43/44, 115200)

@@ -15,14 +15,10 @@ main/
 │   ├── lvgl_touch.c      # LVGL 触摸适配层
 │   └── lvgl_touch.h
 ├── ui/
-│   ├── chat_ui.c         # 旧版 UI（保留兼容）
-│   ├── chat_ui.h
 │   ├── lvgl_chat_ui.c    # LVGL 版本 UI
-│   └── lvgl_chat_ui.h
-└── font/
-    ├── font_hzk.h        # 旧版字体（保留兼容）
-    ├── lv_font_chinese_16.c  # LVGL 中文字体
-    └── lv_font_chinese_16.h
+│   ├── lvgl_chat_ui.h
+│   ├── lvgl_widgets.c    # 自定义控件
+│   └── lvgl_widgets.h
 ```
 
 ## 主要 API
@@ -97,7 +93,7 @@ LVGL 配置文件位于 `components/lvgl/include/lv_conf.h`，主要配置项：
 
 1. 使用 LVGL 字体转换工具: https://lvgl.io/tools/fontconverter
 2. 导出为 C 数组格式
-3. 替换 `main/font/lv_font_chinese_16.c`
+3. 替换 LVGL 字体文件
 
 ## 常见问题
 

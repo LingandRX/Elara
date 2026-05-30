@@ -64,12 +64,8 @@ Elara/
 │   ├── input/                     # 输入相关
 │   │   └── lvgl_touch.c/h        # 触摸输入适配
 │   ├── ui/                        # 用户界面
-│   │   ├── chat_ui.c/h           # 旧版 UI
 │   │   ├── lvgl_chat_ui.c/h      # LVGL 版本 UI
 │   │   └── lvgl_widgets.c/h      # 自定义控件
-│   ├── font/                      # 字体资源
-│   │   ├── font_hzk.h            # 旧版字体
-│   │   └── lv_font_chinese_16.c/h # LVGL 中文字体
 │   └── comm/                      # 通信协议
 │       └── uart_comm.c/h         # UART 通信
 ├── components/                    # 组件库

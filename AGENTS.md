@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-基于 ESP-IDF v5.5.4 的 ESP32-S3 聊天设备项目，使用 ESP32-S3-Touch-LCD-1.9 开发板，包含 ST7789V2 LCD 显示屏驱动、CST816T 触摸驱动和聊天 UI 功能。
+基于 ESP-IDF v5.5.4 的 ESP32-S3 聊天设备项目，使用 ESP32-S3-Touch-LCD-1.9 开发板，包含 SH8601 LCD 显示屏驱动、CST816T 触摸驱动和聊天 UI 功能。
 
 ## 开发板资料
 
@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 详细文档: `docs/ESP32-S3-Touch-LCD-1.9.md`
 - LVGL 集成指南: `docs/LVGL_Integration.md`
 - 项目总结: `docs/Project_Summary.md`
-- 显示驱动: ST7789V2 (170×320, RGB565, SPI)
+- 显示驱动: SH8601 (170×320, RGB565, SPI, 使用官方 esp_lcd_sh8601 组件)
 - 触摸芯片: CST816T (I2C 地址 0x15, 单点触摸)
 - UI 框架: LVGL v9.1
 
@@ -67,13 +67,14 @@ idf.py menuconfig
 **入口点**: `main/main.c` → `app_main()`
 
 **模块结构**:
-- `main/display/sh8601.c` - ST7789V2 LCD 驱动（SPI，RGB565，170x320 竖屏）
-- `main/display/lvgl_display.c` - LVGL 显示驱动适配层
+- `main/main.c` - 程序入口，LCD 初始化，任务创建
+- `main/display/lv_port_disp.c` - LVGL 显示端口（使用 esp_lcd API）
+- `main/display/lcd_config.h` - LCD 配置常量
 - `main/input/lvgl_touch.c` - LVGL 触摸输入适配层
-- `main/ui/chat_ui.c` - 旧版聊天界面（自定义绘制）
-- `main/ui/lvgl_chat_ui.c` - LVGL 聊天界面（新版本，使用 LVGL 控件）
-- `main/font/lv_font_chinese_16.c` - 中文字体支持
+- `main/ui/lvgl_chat_ui.c` - LVGL 聊天界面（使用 LVGL 控件）
+- `main/ui/lvgl_widgets.c` - LVGL 自定义控件
 - `main/comm/uart_comm.c` - UART 通信协议（JSON 命令解析）
+- `components/esp_lcd_sh8601/` - 官方 SH8601 LCD 驱动组件
 - `components/i2c_bsp/` - I2C 主机驱动封装
 - `components/esp_touch/` - CST816T 触摸控制器驱动（I2C 地址 0x15）
 - `components/lvgl/` - LVGL 图形库组件
@@ -138,10 +139,11 @@ idf.py menuconfig
 
 - FreeRTOS 节拍率: 1000Hz
 - CPU 频率: 240MHz
-- LCD 帧缓冲区使用 PSRAM（需在 sdkconfig.defaults 启用 CONFIG_SPIRAM）
-- UART 协议使用 JSON 格式，支持 status/chat/clear 三种命令类型
+- LCD 使用 esp_lcd_sh8601 官方组件，通过 esp_lcd API 操作
+- UART 协议使用 JSON 格式，支持 status/chat/clear/progress 四种命令类型
 - LVGL 版本: 9.1，通过 ESP-IDF 组件管理器集成
-- LVGL 显示缓冲: 双缓冲模式，每缓冲 40 行
-- LVGL 处理频率: 200Hz (5ms 间隔)
+- LVGL 显示缓冲: 单缓冲模式，40 行部分渲染
+- LVGL 处理频率: 100Hz (10ms 间隔)
 - 触摸坐标映射: 原始坐标 (0-4095) → 屏幕坐标 (0-169, 0-319)
-- 中文字体: 16px，支持常用中文字符
+- 背光控制: LEDC PWM，低电平亮（duty=0 最亮，duty=255 最暗）
+- 初始化顺序: LCD → LVGL → I2C → 触摸 → UI → 背光

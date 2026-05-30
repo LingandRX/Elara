@@ -9,11 +9,12 @@
 
 ### Added
 - LVGL v9.1 图形库集成
-- LVGL 显示驱动适配层 (`main/display/lvgl_display.c`)
+- LVGL 显示驱动适配层 (`main/display/lv_port_disp.c`)
 - LVGL 触摸输入适配层 (`main/input/lvgl_touch.c`)
 - LVGL 版本聊天界面 (`main/ui/lvgl_chat_ui.c`)
 - LVGL 自定义控件库 (`main/ui/lvgl_widgets.c`)
-- LVGL 中文字体支持 (`main/font/lv_font_chinese_16.c`)
+- 官方 esp_lcd_sh8601 组件 (`components/esp_lcd_sh8601/`)
+- LCD 配置常量 (`main/display/lcd_config.h`)
 - 构建脚本 (`build.sh`)
 - 代码格式化配置 (`.clang-format`, `.editorconfig`)
 - 项目文档
@@ -24,12 +25,18 @@
 - 字体生成工具 (`tools/generate_font.py`)
 
 ### Changed
-- 更新 `main.c` 使用 LVGL UI 替代旧版 UI
-- 更新 `main/CMakeLists.txt` 包含新的源文件
-- 更新 `AGENTS.md` 添加 LVGL 相关说明
+- 重构 LCD 驱动：从自定义 `sh8601.c` 迁移到官方 `esp_lcd_sh8601` 组件
+- 更新 `main.c` 使用 ESP-IDF 标准 LCD API
+- 更新 `lv_port_disp.c` 使用 `esp_lcd_panel_draw_bitmap()`
+- 背光控制移至 `lv_port_disp.c`，使用 LEDC PWM
+- 更新 `main/CMakeLists.txt` 添加 `esp_lcd_sh8601` 依赖
+
+### Removed
+- 自定义 SH8601 LCD 驱动 (`main/display/sh8601.c`, `main/display/sh8601.h`)
 
 ### Fixed
-- 无
+- 修复字节序双重交换导致的颜色错误（移除多余的 `__builtin_bswap16()` 调用）
+- 修复 I2C 驱动未初始化导致的触摸崩溃
 
 ## [0.1.0] - 2026-05-30
 

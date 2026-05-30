@@ -68,6 +68,12 @@ void lvgl_chat_ui_clear(void);
 void lvgl_chat_ui_welcome(void);
 
 /**
+ * 设置进度条值
+ * @param value 进度值 (0-100)，传入负数隐藏进度条
+ */
+void lvgl_chat_ui_set_progress(int value);
+
+/**
  * 获取 UI 容器
  * @return lv_obj_t 指针
  */

@@ -69,6 +69,14 @@ static void parse_json(const char *line) {
             xQueueSend(cmdQueue, &cmd, 0);
         }
     }
+    else if (strcmp(type->valuestring, "progress") == 0) {
+        cJSON *value = cJSON_GetObjectItem(root, "value");
+        if (cJSON_IsNumber(value)) {
+            cmd.type = CMD_PROGRESS;
+            cmd.progress = value->valueint;
+            xQueueSend(cmdQueue, &cmd, 0);
+        }
+    }
 
     cJSON_Delete(root);
 }

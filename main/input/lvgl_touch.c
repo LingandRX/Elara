@@ -4,10 +4,11 @@
  */
 
 #include "lvgl_touch.h"
-#include "display/sh8601.h"
+#include "display/lcd_config.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "i2c_bsp.h"  /* I2C 驱动初始化 */
 
 /* 引用外部触摸函数 */
 extern void touch_Init(void);
@@ -30,12 +31,12 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data) {
     if (touched) {
         /* 坐标映射: 触摸坐标 (0-4095) -> 屏幕坐标 (0-169, 0-319) */
         /* 注意: 可能需要根据实际触摸方向调整 */
-        last_x = (uint16_t)((x * SH8601_WIDTH) / 4096);
-        last_y = (uint16_t)((y * SH8601_HEIGHT) / 4096);
+        last_x = (uint16_t)((x * LCD_WIDTH) / 4096);
+        last_y = (uint16_t)((y * LCD_HEIGHT) / 4096);
 
         /* 坐标裁剪 */
-        if (last_x >= SH8601_WIDTH) last_x = SH8601_WIDTH - 1;
-        if (last_y >= SH8601_HEIGHT) last_y = SH8601_HEIGHT - 1;
+        if (last_x >= LCD_WIDTH) last_x = LCD_WIDTH - 1;
+        if (last_y >= LCD_HEIGHT) last_y = LCD_HEIGHT - 1;
 
         is_pressed = true;
         data->state = LV_INDEV_STATE_PRESSED;
@@ -54,6 +55,10 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data) {
  */
 void lvgl_touch_init(void) {
     ESP_LOGI(TAG, "Initializing LVGL touch driver...");
+
+    /* 初始化 I2C 驱动（触摸控制器依赖 I2C） */
+    ESP_LOGI(TAG, "Initializing I2C driver...");
+    I2C_master_Init();
 
     /* 初始化触摸控制器 */
     touch_Init();
