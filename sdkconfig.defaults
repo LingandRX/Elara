@@ -14,3 +14,6 @@ CONFIG_FREERTOS_HZ=1000
 
 # SPI RAM (PSRAM) - 关闭，开发板未连接或配置不匹配
 # CONFIG_SPIRAM is not set
+
+# LVGL 配置
+CONFIG_LV_COLOR_16_SWAP=y

@@ -38,7 +38,7 @@ static void lcd_send_byte(sh8601_dev_t *dev, uint8_t data) {
 }
 
 // 设置显示窗口（带偏移补偿）
-static void lcd_set_window(sh8601_dev_t *dev, int x, int y, int w, int h) {
+void lcd_set_window(sh8601_dev_t *dev, int x, int y, int w, int h) {
     // SH8601 有 35 像素 X 偏移
     int x_offset = (_rotation == 0) ? 35 : 0;
     int y_offset = (_rotation == 1) ? 35 : 0;

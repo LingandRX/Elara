@@ -1,0 +1,45 @@
+# EditorConfig 配置文件
+# 适用于 ESP-IDF C 项目
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{c,h}]
+indent_style = space
+indent_size = 4
+max_line_length = 120
+
+[*.{cpp,hpp}]
+indent_style = space
+indent_size = 4
+max_line_length = 120
+
+[*.{py}]
+indent_style = space
+indent_size = 4
+max_line_length = 120
+
+[*.{md}]
+indent_style = space
+indent_size = 2
+max_line_length = 80
+
+[*.{yml,yaml}]
+indent_style = space
+indent_size = 2
+
+[Makefile]
+indent_style = tab
+
+[*.{cmake,CMakeLists.txt}]
+indent_style = space
+indent_size = 2
+
+[*.{json}]
+indent_style = space
+indent_size = 2

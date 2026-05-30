@@ -1,0 +1,42 @@
+# Stale bot 配置
+# 自动标记和关闭过时的 issue 和 PR
+
+# 只处理 issues
+only: issues
+
+# 配置
+daysUntilStale: 60
+daysUntilClose: 7
+
+# 标签
+staleLabel: stale
+closeLabel: wontfix
+
+# 消息
+markComment: >
+  This issue has been automatically marked as stale because it has not had
+  recent activity. It will be closed in 7 days if no further activity occurs.
+  Thank you for your contributions.
+
+closeComment: >
+  This issue was closed because it has been stale for 7 days with no activity.
+  Feel free to reopen if this issue is still relevant.
+
+# 忽略的标签
+exemptLabels:
+  - pinned
+  - security
+  - bug
+  - enhancement
+
+# 忽略的里程碑
+exemptMilestones: true
+
+# 忽略有 assignee 的 issue
+exemptAssignees: true
+
+# 设置为 true 以仅处理 issues 而不是 PR
+onlyIssues: false
+
+# 设置为 true 以仅处理 PR 而不是 issues
+onlyPRs: false

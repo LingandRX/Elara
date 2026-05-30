@@ -1,0 +1,65 @@
+# Labeler 配置
+# 根据文件路径自动打标签
+
+# 显示相关
+display:
+  - main/display/*
+  - main/display/**/*
+
+# 输入相关
+input:
+  - main/input/*
+  - main/input/**/*
+
+# UI 相关
+ui:
+  - main/ui/*
+  - main/ui/**/*
+
+# 字体相关
+font:
+  - main/font/*
+  - main/font/**/*
+
+# 通信相关
+comm:
+  - main/comm/*
+  - main/comm/**/*
+
+# 组件库
+components:
+  - components/*
+  - components/**/*
+
+# 文档
+docs:
+  - docs/*
+  - docs/**/*
+  - *.md
+
+# 配置
+config:
+  - CMakeLists.txt
+  - sdkconfig.defaults
+  - .clang-format
+  - .editorconfig
+
+# CI/CD
+ci:
+  - .github/*
+  - .github/**/*
+
+# 工具
+tools:
+  - tools/*
+  - tools/**/*
+
+# 示例
+examples:
+  - examples/*
+  - examples/**/*
+
+# 测试
+test:
+  - test/*
+  - test/**/*

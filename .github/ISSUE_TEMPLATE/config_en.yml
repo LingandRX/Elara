@@ -1,0 +1,18 @@
+# Issue Template Configuration (English)
+blank_issues_enabled: true
+contact_links:
+  - name: 📖 Documentation
+    url: https://github.com/yourusername/elara/blob/main/docs/Project_Summary.md
+    about: Check out the project documentation for more information
+  - name: 💬 Discussions
+    url: https://github.com/yourusername/elara/discussions
+    about: Ask questions or share ideas in the discussions
+  - name: 📧 Email
+    url: your-email@example.com
+    about: Contact us via email
+  - name: 🔒 Security
+    url: https://github.com/yourusername/elara/security/advisories/new
+    about: Report security vulnerabilities privately
+  - name: 🌐 中文模板
+    url: https://github.com/yourusername/elara/issues/new/choose
+    about: 使用中文模板

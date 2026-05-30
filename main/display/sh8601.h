@@ -57,4 +57,7 @@ void sh8601_flush(sh8601_dev_t *dev);
 // 局部刷新（优化性能）
 void sh8601_flush_area(sh8601_dev_t *dev, int x, int y, int w, int h);
 
+// 设置显示窗口（LVGL 适配层使用）
+void lcd_set_window(sh8601_dev_t *dev, int x, int y, int w, int h);
+
 #endif

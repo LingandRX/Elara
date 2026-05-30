@@ -1,13 +1,24 @@
 idf_component_register(
-    SRCS 
+    SRCS
         "main.c"
         "display/sh8601.c"
+        "display/lv_port_disp.c"
         "ui/chat_ui.c"
+        "ui/lvgl_chat_ui.c"
+        "ui/lvgl_widgets.c"
         "comm/uart_comm.c"
-    INCLUDE_DIRS 
+        "input/lvgl_touch.c"
+        "font/lv_font_chinese_16.c"
+    INCLUDE_DIRS
         "."
         "display"
         "ui"
         "comm"
         "font"
+        "input"
+    PRIV_REQUIRES
+        driver
+        esp_lcd
+        json
+        lvgl
 )

@@ -2,6 +2,7 @@
 
 # 编译产物
 /build/
+/cmake-build-*/
 /sdkconfig.old
 /sdkconfig
 !/sdkconfig.defaults
@@ -10,6 +11,12 @@
 # 依赖管理
 /managed_components/
 /dependencies.lock
+
+# LVGL 缓存
+*.lv_cache
+
+# LVGL 组件（通过 idf.py add-dependency 安装）
+components/lvgl/
 
 # Python 虚拟环境
 __pycache__/

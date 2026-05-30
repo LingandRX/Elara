@@ -1,0 +1,63 @@
+# Clang-Format 配置文件
+# 适用于 ESP-IDF C 项目
+
+Language: C
+BasedOnStyle: LLVM
+
+# 缩进
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ContinuationIndentWidth: 4
+IndentCaseLabels: false
+IndentPPDirectives: None
+NamespaceIndentation: None
+
+# 换行
+ColumnLimit: 120
+BreakBeforeBraces: Attach
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortBlocksOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortEnumsOnASingleLine: true
+
+# 对齐
+AlignAfterOpenBracket: Align
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlignEscapedNewlines: Left
+AlignOperands: true
+AlignTrailingComments: true
+
+# 空格
+SpaceBeforeParens: ControlStatements
+SpaceInEmptyParentheses: false
+SpacesInParentheses: false
+SpacesInAngles: false
+SpaceBeforeAssignmentOperators: true
+SpaceAfterCStyleCast: false
+
+# 括号
+BreakBeforeBinaryOperators: None
+BreakConstructorInitializersBeforeComma: false
+BinPackArguments: true
+BinPackParameters: true
+
+# 其他
+SortIncludes: false
+IncludeBlocks: Preserve
+PointerAlignment: Right
+ReflowComments: true
+AllowAllParametersOfDeclarationOnNextLine: true
+
+# 自定义规则
+ForEachMacros:
+  - LIST_FOREACH
+  - SLIST_FOREACH
+  - TAILQ_FOREACH
+
+# 禁用某些格式化
+DisableFormat: false
+SortUsingDeclarations: false
