@@ -6,6 +6,7 @@ idf_component_register(
         "ui/lvgl_chat_ui.c"
         "ui/lvgl_widgets.c"
         "comm/uart_comm.c"
+        "comm/tcp_server.c"
         "input/lvgl_touch.c"
     INCLUDE_DIRS
         "."

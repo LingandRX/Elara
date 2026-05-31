@@ -8,6 +8,7 @@
 ## [Unreleased]
 
 ### Added
+- TCP Server implementation on port 8080 to receive Wi-Fi commands (JSON or configuration payload)
 - Wi-Fi configuration support via UART terminal (`wifi <ssid> <password>` command)
 - NVS storage integration for automatic Wi-Fi credential saving and loading across reboots
 - Dedicated Wi-Fi Settings UI page to display instructions, current SSID, and IPv4 address
