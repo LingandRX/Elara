@@ -4,10 +4,11 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_system.h"
+#include "driver/gpio.h"
 #include "driver/spi_master.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
-#include "esp_lcd_sh8601.h"
+#include "esp_lcd_panel_st7789.h"
 
 #include "display/lcd_config.h"
 #include "display/lv_port_disp.h"
@@ -16,40 +17,139 @@
 #include "comm/uart_comm.h"
 #include "lvgl.h"
 
-/* SH8601 初始化命令序列（来自官方示例） */
-/* 注意: 不包含 0x36 (MADCTL)，由 esp_lcd 驱动基于 rgb_ele_order 自动设置 */
-static const sh8601_lcd_init_cmd_t lcd_init_cmds[] = {
-    {0xb2, (uint8_t []){0x0c, 0x0c, 0x00, 0x33, 0x33}, 5, 0},  // Porch Setting
-    {0xb7, (uint8_t []){0x35}, 1, 0},   // Gate Control
-    {0xbb, (uint8_t []){0x13}, 1, 0},   // VCOM Setting
-    {0xc0, (uint8_t []){0x2c}, 1, 0},   // LCM Control
-    {0xc2, (uint8_t []){0x01}, 1, 0},   // VDV and VRH Enable
-    {0xc3, (uint8_t []){0x0b}, 1, 0},   // VDV Set
-    {0xc4, (uint8_t []){0x20}, 1, 0},   // VCOM Offset Set
-    {0xc6, (uint8_t []){0x0f}, 1, 0},   // Frame Rate Control
-    {0xd0, (uint8_t []){0xa4, 0xa1}, 2, 0},  // Power Control 1
-    {0xd6, (uint8_t []){0xa1}, 1, 0},   // Source Timing Adjust
-    {0xe0, (uint8_t []){0x00, 0x03, 0x07, 0x08, 0x07, 0x15, 0x2A, 0x44, 0x42, 0x0A, 0x17, 0x18, 0x25, 0x27}, 14, 0},  // Positive Gamma
-    {0xe1, (uint8_t []){0x00, 0x03, 0x08, 0x07, 0x07, 0x23, 0x2A, 0x43, 0x42, 0x09, 0x18, 0x17, 0x25, 0x27}, 14, 0},  // Negative Gamma
-    {0x21, (uint8_t []){0x21}, 0, 0},   // INVON - 颜色反转（SH8601 需要）
-    {0x11, (uint8_t []){0x11}, 0, 120}, // SLPOUT - 退出睡眠
-    {0x29, (uint8_t []){0x29}, 0, 0},   // DISPON - 开启显示
-};
-
 static const char *TAG = "MAIN";
 
 /* 全局设备 */
 static esp_lcd_panel_handle_t panel = NULL;
 static QueueHandle_t cmdQueue;
 
-/* LVGL 处理任务（使用互斥锁保护） */
+/* SPI 颜色传输完成回调（通知 LVGL 刷新完成） */
+static bool on_color_trans_done(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_io_event_data_t *edata, void *user_ctx) {
+    lv_port_disp_flush_ready();
+    return false;
+}
+
+/**
+ * Boot 按键颜色切换状态机
+ */
+typedef enum {
+    BOOT_COLOR_IDLE = 0,
+    BOOT_COLOR_RED,
+    BOOT_COLOR_GREEN,
+    BOOT_COLOR_BLUE,
+} boot_color_state_t;
+
+static volatile boot_color_state_t boot_color_state = BOOT_COLOR_IDLE;
+
+/* 纯色遮罩层（用于 boot 按键颜色切换） */
+static lv_obj_t *boot_overlay = NULL;
+
+/**
+ * 显示指定 boot 颜色（通过 LVGL API，避免直接操作 SPI）
+ */
+static void show_boot_color(boot_color_state_t state) {
+    /* 获取 LVGL 锁 */
+    if (!lv_port_disp_lock(-1)) {
+        ESP_LOGW(TAG, "Boot key: lock failed");
+        return;
+    }
+
+    if (state == BOOT_COLOR_IDLE) {
+        /* 回到主页面：删除遮罩层，触发 LVGL 重新渲染 */
+        if (boot_overlay) {
+            lv_obj_del(boot_overlay);
+            boot_overlay = NULL;
+        }
+        ESP_LOGI(TAG, "Boot key: IDLE (back to main UI)");
+        lv_port_disp_unlock();
+        return;
+    }
+
+    lv_color_t color;
+    const char *name;
+    switch (state) {
+        case BOOT_COLOR_RED:   color = lv_color_make(0xFF, 0x00, 0x00); name = "RED";   break;
+        case BOOT_COLOR_GREEN: color = lv_color_make(0x00, 0xFF, 0x00); name = "GREEN"; break;
+        case BOOT_COLOR_BLUE:  color = lv_color_make(0x00, 0x00, 0xFF); name = "BLUE";  break;
+        default: lv_port_disp_unlock(); return;
+    }
+
+    ESP_LOGI(TAG, "Boot key: %s", name);
+
+    /* 创建或复用遮罩层 */
+    if (!boot_overlay) {
+        boot_overlay = lv_obj_create(lv_scr_act());
+        lv_obj_remove_style_all(boot_overlay);  /* 清除所有默认样式（圆角、边框、padding 等） */
+        lv_obj_set_size(boot_overlay, LCD_WIDTH, LCD_HEIGHT);
+        lv_obj_set_pos(boot_overlay, 0, 0);
+        /* 确保遮罩层在最上层 */
+        lv_obj_move_foreground(boot_overlay);
+    }
+
+    /* 设置遮罩层颜色 */
+    lv_obj_set_style_bg_color(boot_overlay, color, 0);
+    lv_obj_set_style_bg_opa(boot_overlay, LV_OPA_COVER, 0);
+
+    lv_port_disp_unlock();
+}
+
+/**
+ * BOOT 按键检测任务：循环切换 IDLE → RED → GREEN → BLUE → IDLE
+ */
+static void boot_key_task(void *pvParam) {
+    /* 配置 BOOT 按键 GPIO */
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << BOOT_KEY_PIN),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&io_conf);
+
+    ESP_LOGI(TAG, "Boot key task started, pin=%d", BOOT_KEY_PIN);
+
+    uint8_t last_level = 1;
+    while (1) {
+        uint8_t level = gpio_get_level(BOOT_KEY_PIN);
+        /* 检测下降沿（按下） */
+        if (last_level == 1 && level == 0) {
+            vTaskDelay(pdMS_TO_TICKS(20)); /* 消抖 */
+            if (gpio_get_level(BOOT_KEY_PIN) == 0) {
+                /* 切换状态 */
+                boot_color_state++;
+                if (boot_color_state > BOOT_COLOR_BLUE) {
+                    boot_color_state = BOOT_COLOR_IDLE;
+                }
+                show_boot_color(boot_color_state);
+            }
+            /* 等待按键释放 */
+            while (gpio_get_level(BOOT_KEY_PIN) == 0) {
+                vTaskDelay(pdMS_TO_TICKS(10));
+            }
+        }
+        last_level = level;
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}
+
+/* LVGL 处理任务（使用互斥锁保护，动态延迟） */
+#define LVGL_TASK_MAX_DELAY_MS  500
+#define LVGL_TASK_MIN_DELAY_MS  1
+
 static void lvgl_handler_task(void *pvParam) {
+    uint32_t task_delay_ms = LVGL_TASK_MAX_DELAY_MS;
     while (1) {
         if (lv_port_disp_lock(-1)) {
-            lv_timer_handler();
+            task_delay_ms = lv_task_handler();
             lv_port_disp_unlock();
         }
-        vTaskDelay(pdMS_TO_TICKS(10));
+        if (task_delay_ms > LVGL_TASK_MAX_DELAY_MS) {
+            task_delay_ms = LVGL_TASK_MAX_DELAY_MS;
+        } else if (task_delay_ms < LVGL_TASK_MIN_DELAY_MS) {
+            task_delay_ms = LVGL_TASK_MIN_DELAY_MS;
+        }
+        vTaskDelay(pdMS_TO_TICKS(task_delay_ms));
     }
 }
 
@@ -114,26 +214,26 @@ static esp_err_t lcd_init(void) {
         .lcd_param_bits = 8,
         .spi_mode = 0,
         .trans_queue_depth = LCD_SPI_QUEUE_SIZE,
+        .on_color_trans_done = on_color_trans_done,
+        .user_ctx = NULL,
     };
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)SPI3_HOST, &io_config, &io_handle));
 
-    /* SH8601 面板配置 */
-    sh8601_vendor_config_t vendor_config = {
-        .init_cmds = lcd_init_cmds,
-        .init_cmds_size = sizeof(lcd_init_cmds) / sizeof(lcd_init_cmds[0]),
-    };
+    /* ST7789V2 面板配置 */
     esp_lcd_panel_dev_config_t panel_config = {
         .reset_gpio_num = LCD_PIN_RST,
         .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
         .bits_per_pixel = 16,
-        .data_endian = LCD_RGB_DATA_ENDIAN_BIG,  // 关键配置：大端序
-        .vendor_config = &vendor_config,
+        .data_endian = LCD_RGB_DATA_ENDIAN_BIG,
     };
-    ESP_ERROR_CHECK(esp_lcd_new_panel_sh8601(io_handle, &panel_config, &panel));
+    ESP_ERROR_CHECK(esp_lcd_new_panel_st7789(io_handle, &panel_config, &panel));
 
     /* 复位并初始化面板 */
     ESP_ERROR_CHECK(esp_lcd_panel_reset(panel));
     ESP_ERROR_CHECK(esp_lcd_panel_init(panel));
+
+    /* 设置 X 偏移（170×320 面板在 240×320 控制器中的偏移） */
+    ESP_ERROR_CHECK(esp_lcd_panel_set_gap(panel, 35, 0));
 
     /* 开启显示 */
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel, true));
@@ -185,6 +285,7 @@ void app_main(void) {
     xTaskCreate(lvgl_handler_task, "lvgl_handler", 8192, NULL, 2, NULL);
     xTaskCreate(uart_rx_task, "uart_rx", 4096, NULL, 5, NULL);
     xTaskCreate(cmd_process_task, "cmd_proc", 4096, NULL, 5, NULL);
+    xTaskCreate(boot_key_task, "boot_key", 4096, NULL, 1, NULL);
 
     ESP_LOGI(TAG, "All tasks started. Ready.");
 

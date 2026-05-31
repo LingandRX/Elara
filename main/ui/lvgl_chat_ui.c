@@ -45,6 +45,19 @@ static int msg_head = 0;
 /* 当前情绪 */
 static char current_emotion[16] = "";
 
+/* 辅助函数：v8 中没有 obj_set_pad_all */
+static inline void obj_set_pad_all(lv_obj_t *obj, lv_coord_t pad, lv_style_selector_t selector) {
+    lv_obj_set_style_pad_left(obj, pad, selector);
+    lv_obj_set_style_pad_right(obj, pad, selector);
+    lv_obj_set_style_pad_top(obj, pad, selector);
+    lv_obj_set_style_pad_bottom(obj, pad, selector);
+}
+
+/* 动画辅助：v8 中 lv_anim_exec_xcb_t 只接受 2 个参数 */
+static void anim_opa_cb(void *obj, int32_t v) {
+    lv_obj_set_style_opa(obj, v, 0);
+}
+
 /* 前向声明 */
 static lv_obj_t *create_message_bubble(MsgRole role, const char *text);
 static lv_obj_t *create_animated_message_bubble(MsgRole role, const char *text);
@@ -58,7 +71,7 @@ static void create_status_bar(void) {
     lv_obj_set_style_bg_color(status_bar, lv_color_hex(0x0F0F19), 0);
     lv_obj_set_style_border_width(status_bar, 0, 0);
     lv_obj_set_style_radius(status_bar, 0, 0);
-    lv_obj_set_style_pad_all(status_bar, 6, 0);
+    obj_set_pad_all(status_bar, 6, 0);
     lv_obj_align(status_bar, LV_ALIGN_TOP_LEFT, 0, 0);
 
     /* 情绪指示器 */
@@ -86,7 +99,7 @@ static void create_chat_area(void) {
     lv_obj_set_style_bg_color(chat_area, COLOR_BG, 0);
     lv_obj_set_style_border_width(chat_area, 0, 0);
     lv_obj_set_style_radius(chat_area, 0, 0);
-    lv_obj_set_style_pad_all(chat_area, 4, 0);
+    obj_set_pad_all(chat_area, 4, 0);
     lv_obj_align(chat_area, LV_ALIGN_TOP_LEFT, 0, 32);  /* 状态栏高度 32 */
     lv_obj_set_scroll_dir(chat_area, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(chat_area, LV_SCROLLBAR_MODE_AUTO);
@@ -117,7 +130,7 @@ static void create_bottom_bar(void) {
     lv_obj_set_style_bg_color(bottom_bar, lv_color_hex(0x0F0F19), 0);
     lv_obj_set_style_border_width(bottom_bar, 0, 0);
     lv_obj_set_style_radius(bottom_bar, 0, 0);
-    lv_obj_set_style_pad_all(bottom_bar, 4, 0);
+    obj_set_pad_all(bottom_bar, 4, 0);
     lv_obj_align(bottom_bar, LV_ALIGN_BOTTOM_LEFT, 0, 0);
 
     /* 底部文本 */
@@ -134,7 +147,7 @@ static void create_bottom_bar(void) {
 static lv_obj_t *create_message_bubble(MsgRole role, const char *text) {
     lv_obj_t *bubble = lv_obj_create(chat_area);
     lv_obj_set_style_radius(bubble, 8, 0);
-    lv_obj_set_style_pad_all(bubble, 8, 0);
+    obj_set_pad_all(bubble, 8, 0);
     lv_obj_set_style_border_width(bubble, 0, 0);
     lv_obj_set_width(bubble, LV_HOR_RES - 24);
 
@@ -201,12 +214,12 @@ void lvgl_chat_ui_init(void) {
     memset(messages, 0, sizeof(messages));
 
     /* 创建主容器 */
-    main_container = lv_obj_create(lv_screen_active());
+    main_container = lv_obj_create(lv_scr_act());
     lv_obj_set_size(main_container, LV_HOR_RES, LV_VER_RES);
     lv_obj_set_style_bg_color(main_container, COLOR_BG, 0);
     lv_obj_set_style_border_width(main_container, 0, 0);
     lv_obj_set_style_radius(main_container, 0, 0);
-    lv_obj_set_style_pad_all(main_container, 0, 0);
+    obj_set_pad_all(main_container, 0, 0);
     lv_obj_align(main_container, LV_ALIGN_TOP_LEFT, 0, 0);
 
     /* 创建 UI 元素 */
@@ -250,9 +263,9 @@ void lvgl_chat_ui_add_msg(const char *role, const char *text, const char *emotio
             /* 重新渲染最后一条消息 */
             if (chat_area) {
                 /* 删除最后一个子对象 (消息气泡) */
-                uint32_t child_count = lv_obj_get_child_count(chat_area);
+                uint32_t child_count = lv_obj_get_child_cnt(chat_area);
                 if (child_count > 0) {
-                    lv_obj_delete(lv_obj_get_child(chat_area, child_count - 1));
+                    lv_obj_del(lv_obj_get_child(chat_area, child_count - 1));
                 }
                 /* 重新创建消息气泡 */
                 create_message_bubble(msg_role, last_msg->text);
@@ -380,7 +393,7 @@ void lvgl_chat_ui_welcome(void) {
     lv_obj_set_size(welcome_bubble, LV_HOR_RES - 24, LV_SIZE_CONTENT);
     lv_obj_set_style_bg_color(welcome_bubble, COLOR_AI_BUB, 0);
     lv_obj_set_style_radius(welcome_bubble, 8, 0);
-    lv_obj_set_style_pad_all(welcome_bubble, 12, 0);
+    obj_set_pad_all(welcome_bubble, 12, 0);
     lv_obj_set_style_border_width(welcome_bubble, 0, 0);
     lv_obj_align(welcome_bubble, LV_ALIGN_TOP_MID, 0, 20);
 
@@ -396,7 +409,7 @@ void lvgl_chat_ui_welcome(void) {
     lv_anim_set_var(&a, welcome_bubble);
     lv_anim_set_values(&a, LV_OPA_TRANSP, LV_OPA_COVER);
     lv_anim_set_time(&a, 500);
-    lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_style_opa);
+    lv_anim_set_exec_cb(&a, anim_opa_cb);
     lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
     lv_anim_start(&a);
 
@@ -468,7 +481,7 @@ static lv_obj_t *create_animated_message_bubble(MsgRole role, const char *text) 
         lv_anim_set_var(&a, bubble);
         lv_anim_set_values(&a, LV_OPA_TRANSP, LV_OPA_COVER);
         lv_anim_set_time(&a, 300);
-        lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_style_opa);
+        lv_anim_set_exec_cb(&a, anim_opa_cb);
         lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
         lv_anim_start(&a);
     }

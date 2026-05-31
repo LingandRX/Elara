@@ -1,6 +1,6 @@
 /**
  * @file lvgl_touch.c
- * LVGL 触摸输入驱动适配层实现
+ * LVGL 触摸输入驱动适配层实现 - LVGL v8 版本
  */
 
 #include "lvgl_touch.h"
@@ -24,7 +24,7 @@ static bool is_pressed = false;
 /**
  * LVGL 触摸读取回调
  */
-static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data) {
+static void touch_read_cb(lv_indev_drv_t *indev_drv, lv_indev_data_t *data) {
     uint16_t x, y;
     uint8_t touched = getTouch(&x, &y);
 
@@ -63,18 +63,17 @@ void lvgl_touch_init(void) {
     /* 初始化触摸控制器 */
     touch_Init();
 
-    /* 创建输入设备 */
-    touch_indev = lv_indev_create();
+    /* 初始化输入设备驱动 */
+    static lv_indev_drv_t indev_drv;
+    lv_indev_drv_init(&indev_drv);
+    indev_drv.type = LV_INDEV_TYPE_POINTER;
+    indev_drv.read_cb = touch_read_cb;
+    touch_indev = lv_indev_drv_register(&indev_drv);
+
     if (!touch_indev) {
-        ESP_LOGE(TAG, "Failed to create touch input device");
+        ESP_LOGE(TAG, "Failed to register touch input device");
         return;
     }
-
-    /* 设置输入设备类型为指针 */
-    lv_indev_set_type(touch_indev, LV_INDEV_TYPE_POINTER);
-
-    /* 设置读取回调 */
-    lv_indev_set_read_cb(touch_indev, touch_read_cb);
 
     ESP_LOGI(TAG, "LVGL touch driver initialized");
 }
