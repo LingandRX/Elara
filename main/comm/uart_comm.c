@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <errno.h>
 #include "wifi_manager.h"
+#include "ui/pet_ui.h"
+#include "display/lv_port_disp.h"
 
 static const char *TAG = "COMM";
 static QueueHandle_t cmdQueue = NULL;
@@ -34,10 +36,17 @@ static void comm_finish_upload(void) {
     }
     s_upload_mode = false;
     ESP_LOGI(TAG, "Upload finished: %d bytes", s_uploaded_bytes);
+
+    /* 刷新 UI 缓存 */
+    if (lv_port_disp_lock(-1)) {
+        pet_ui_refresh();
+        lv_port_disp_unlock();
+    }
+
     uart_send_event("upload", "finished");
 }
 
-bool comm_start_upload(uint32_t size) {
+bool comm_start_upload(const char *path, uint32_t size) {
     s_upload_size = size;
     s_uploaded_bytes = 0;
 
@@ -46,15 +55,28 @@ bool comm_start_upload(uint32_t size) {
         s_upload_file = NULL;
     }
 
-    /* 覆盖旧文件 */
-    s_upload_file = fopen("/spiffs/sprite.png", "wb");
+    char target_path[128];
+    if (path && strlen(path) > 0) {
+        if (path[0] == '/') {
+            /* 绝对路径：直接使用 */
+            strncpy(target_path, path, sizeof(target_path) - 1);
+        } else {
+            /* 相对路径：自动补全宠物动画根目录 */
+            snprintf(target_path, sizeof(target_path), "/spiffs/sprites/%s", path);
+        }
+    } else {
+        /* 默认路径：精灵图 */
+        strncpy(target_path, "/spiffs/sprite.png", sizeof(target_path) - 1);
+    }
+
+    s_upload_file = fopen(target_path, "wb");
     if (s_upload_file) {
         s_upload_mode = true;
-        ESP_LOGI(TAG, "Binary upload started: %d bytes", size);
+        ESP_LOGI(TAG, "Binary upload started to %s: %d bytes", target_path, size);
         uart_send_event("upload", "ready");
         return true;
     } else {
-        ESP_LOGE(TAG, "Failed to open /spiffs/sprite.png: %s", strerror(errno));
+        ESP_LOGE(TAG, "Failed to open %s: %s", target_path, strerror(errno));
         uart_send_error("file open error");
         return false;
     }
@@ -70,7 +92,20 @@ size_t comm_write_upload_data(const uint8_t *data, size_t len) {
     size_t remaining = s_upload_size - s_uploaded_bytes;
     size_t to_write = len > remaining ? remaining : len;
     size_t written = fwrite(data, 1, to_write, s_upload_file);
+    
+    /* 计算并打印进度日志 */
+    uint32_t old_progress = (s_uploaded_bytes * 100) / s_upload_size;
     s_uploaded_bytes += written;
+    uint32_t new_progress = (s_uploaded_bytes * 100) / s_upload_size;
+
+    /* 每增长 10% 打印一次日志，避免日志过多冲击串口 */
+    if ((new_progress / 10 > old_progress / 10) || new_progress == 100) {
+        ESP_LOGI(TAG, "Upload progress: %d%% (%d/%d bytes)", (int)new_progress, s_uploaded_bytes, s_upload_size);
+        
+        /* 向上位机发送进度事件 */
+        printf("{\"type\":\"event\",\"source\":\"upload\",\"action\":\"progress\",\"value\":%d}\n", (int)new_progress);
+        fflush(stdout);
+    }
 
     if (written != to_write) {
         ESP_LOGE(TAG, "Upload write failed: %s", strerror(errno));
@@ -113,8 +148,9 @@ void comm_parse_cmd(const char *line) {
             }
         } else if (strcmp(type->valuestring, "upload") == 0) {
             cJSON *size = cJSON_GetObjectItem(root, "size");
+            cJSON *path = cJSON_GetObjectItem(root, "path");
             if (cJSON_IsNumber(size)) {
-                comm_start_upload(size->valueint);
+                comm_start_upload(cJSON_IsString(path) ? path->valuestring : NULL, size->valueint);
             }
         } else if (strcmp(type->valuestring, "petdex") == 0) {
             cJSON *state = cJSON_GetObjectItem(root, "state");

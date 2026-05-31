@@ -27,6 +27,18 @@ esp_err_t storage_init(void);
 bool storage_file_exists(const char *path);
 
 /**
+ * 创建目录
+ * @param path 路径
+ * @return ESP_OK if success
+ */
+esp_err_t storage_mkdir(const char *path);
+
+/**
+ * 初始化宠物动画目录结构
+ */
+void storage_init_pet_dirs(void);
+
+/**
  * 获取可用空间
  * @param total 总空间 (字节)
  * @param used 已用空间 (字节)

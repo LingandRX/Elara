@@ -36,6 +36,7 @@ typedef enum {
 typedef struct {
     PetAnimState state;     /* 状态 */
     const char *name;       /* 状态名称 */
+    const char *dir_name;   /* 目录名称 (用于序列帧小图模式) */
     uint8_t row;            /* Sprite 行号 */
     uint8_t frames;         /* 动画帧数 */
     uint16_t interval_ms;   /* 每帧间隔时间 (ms) */

@@ -34,7 +34,7 @@ typedef struct {
 bool uart_comm_init(QueueHandle_t *cmdQueue);
 
 // 上传控制接口 (供 UART 和 TCP 共享)
-bool comm_start_upload(uint32_t size);
+bool comm_start_upload(const char *path, uint32_t size);
 void comm_write_upload_byte(uint8_t c);
 bool comm_is_uploading(void);
 size_t comm_write_upload_data(const uint8_t *data, size_t len);
