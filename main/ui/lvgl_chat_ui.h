@@ -29,7 +29,17 @@ typedef struct {
 
 /* UI 状态 */
 typedef enum {
-    UI_STATE_IDLE,
+    UI_STATE_IDLE = 0,          /* Row 0: 空闲 */
+    UI_STATE_RUN_RIGHT = 1,     /* Row 1: 向右跑 */
+    UI_STATE_RUN_LEFT = 2,      /* Row 2: 向左跑 */
+    UI_STATE_WAVING = 3,        /* Row 3: 挥手 */
+    UI_STATE_JUMPING = 4,       /* Row 4: 跳跃 */
+    UI_STATE_FAILED = 5,        /* Row 5: 失败 */
+    UI_STATE_WAITING = 6,       /* Row 6: 等待 */
+    UI_STATE_RUNNING = 7,       /* Row 7: 跑步 */
+    UI_STATE_REVIEW = 8,        /* Row 8: 评审 */
+    
+    /* 系统/交互状态 */
     UI_STATE_LISTENING,
     UI_STATE_THINKING,
     UI_STATE_REPLYING,

@@ -2,9 +2,12 @@ idf_component_register(
     SRCS
         "main.c"
         "wifi_manager.c"
+        "storage_manager.c"
         "display/lv_port_disp.c"
         "ui/lvgl_chat_ui.c"
         "ui/lvgl_widgets.c"
+        "ui/pet_anim.c"
+        "ui/pet_ui.c"
         "comm/uart_comm.c"
         "comm/tcp_server.c"
         "input/lvgl_touch.c"
@@ -24,4 +27,5 @@ idf_component_register(
         esp_wifi
         nvs_flash
         esp_netif
+        littlefs
 )

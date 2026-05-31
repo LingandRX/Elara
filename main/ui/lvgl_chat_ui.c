@@ -4,6 +4,8 @@
  */
 
 #include "lvgl_chat_ui.h"
+#include "pet_anim.h"
+#include "pet_ui.h"
 #include "esp_log.h"
 #include <string.h>
 #include <stdio.h>
@@ -377,21 +379,38 @@ void lvgl_chat_ui_set_status(const char *state, const char *emotion) {
         lv_label_set_text(status_label, state);
     }
 
+    /* 映射系统状态到 Pet 动画 */
+    if (strcasecmp(state, "idle") == 0) {
+        pet_ui_set_state(PET_ANIM_IDLE);
+    } else if (strcasecmp(state, "listening") == 0) {
+        pet_ui_set_state(PET_ANIM_WAVING); /* 聆听时挥手 */
+    } else if (strcasecmp(state, "thinking") == 0) {
+        pet_ui_set_state(PET_ANIM_REVIEW); /* 思考时执行 Inspect/Think */
+    } else if (strcasecmp(state, "replying") == 0) {
+        pet_ui_set_state(PET_ANIM_RUNNING); /* 回复时执行 Action/Work */
+    } else if (strcasecmp(state, "error") == 0 || strcasecmp(state, "failed") == 0) {
+        pet_ui_set_state(PET_ANIM_FAILED); /* 错误时执行 Fail/Hurt */
+    }
+
     /* 更新情绪指示器 */
     if (emotion_indicator) {
-        lv_color_t color;
-        if (strcmp(state, "idle") == 0) {
+        lv_color_t color = COLOR_STATUS_IDLE;
+        if (strcasecmp(state, "idle") == 0) {
             color = COLOR_STATUS_IDLE;
-        } else if (strcmp(state, "listening") == 0) {
+        } else if (strcasecmp(state, "listening") == 0) {
             color = COLOR_STATUS_LISTEN;
-        } else if (strcmp(state, "thinking") == 0) {
+        } else if (strcasecmp(state, "thinking") == 0) {
             color = COLOR_STATUS_THINK;
-        } else if (strcmp(state, "replying") == 0) {
+        } else if (strcasecmp(state, "replying") == 0) {
             color = COLOR_STATUS_REPLY;
-        } else if (strcmp(state, "error") == 0) {
+        } else if (strcasecmp(state, "error") == 0 || strcasecmp(state, "failed") == 0) {
             color = COLOR_STATUS_ERR;
-        } else {
-            color = COLOR_STATUS_IDLE;
+        } else if (strcasecmp(state, "running") == 0 || strcasecmp(state, "run right") == 0 || strcasecmp(state, "run left") == 0) {
+            color = COLOR_STATUS_REPLY;
+        } else if (strcasecmp(state, "waving") == 0 || strcasecmp(state, "jumping") == 0) {
+            color = COLOR_STATUS_LISTEN;
+        } else if (strcasecmp(state, "waiting") == 0 || strcasecmp(state, "review") == 0) {
+            color = COLOR_STATUS_THINK;
         }
         lv_obj_set_style_bg_color(emotion_indicator, color, 0);
     }

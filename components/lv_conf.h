@@ -48,4 +48,12 @@
 #define LV_USE_LOG 1
 #define LV_LOG_LEVEL LV_LOG_LEVEL_WARN
 
+/* 启用 PNG 解码器 */
+#define LV_USE_PNG 1
+
+/* 启用文件系统支持 (POSIX) */
+#define LV_USE_FS_POSIX 1
+#define LV_FS_POSIX_LETTER 'S'
+#define LV_FS_POSIX_PATH ""
+
 #endif /* LV_CONF_H */
