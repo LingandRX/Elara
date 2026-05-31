@@ -104,6 +104,11 @@ TEST_CASE("lvgl_chat_ui_status", "[lvgl]") {
     lvgl_chat_ui_set_status("thinking", "thinking");
     lvgl_chat_ui_set_status("replying", "replying");
     lvgl_chat_ui_set_status("error", "error");
+    
+    /* 设置新的 Pet 动画状态 */
+    lvgl_chat_ui_set_status("run right", "happy");
+    lvgl_chat_ui_set_status("waving", "happy");
+    lvgl_chat_ui_set_status("failed", "sad");
 
     /* 验证状态设置成功 (无崩溃) */
     TEST_PASS();
