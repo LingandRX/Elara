@@ -35,7 +35,14 @@ static lv_obj_t *status_label = NULL;
 static lv_obj_t *emotion_indicator = NULL;
 static lv_obj_t *chat_area = NULL;
 static lv_obj_t *bottom_bar = NULL;
-static lv_obj_t *progress_bar = NULL;  /* 新增：进度条 */
+static lv_obj_t *progress_bar = NULL;
+static lv_obj_t *wifi_status_label = NULL;
+
+/* Wi-Fi 页面元素与状态 */
+static lv_obj_t *wifi_page_obj = NULL;
+static lv_obj_t *wifi_info_label = NULL;
+static bool s_wifi_connected = false;
+static char s_saved_ssid[64] = "";
 
 /* 消息列表 */
 static ChatMessage messages[MAX_MESSAGES];
@@ -88,6 +95,13 @@ static void create_status_bar(void) {
     lv_obj_set_style_text_color(status_label, COLOR_TEXT, 0);
     lv_obj_set_style_text_font(status_label, LV_FONT_DEFAULT, 0);
     lv_obj_align(status_label, LV_ALIGN_LEFT_MID, 22, 0);
+
+    /* Wi-Fi 状态文本/图标 */
+    wifi_status_label = lv_label_create(status_bar);
+    lv_label_set_text(wifi_status_label, LV_SYMBOL_WIFI);
+    lv_obj_set_style_text_color(wifi_status_label, COLOR_TEXT_DIM, 0);
+    lv_obj_set_style_text_font(wifi_status_label, LV_FONT_DEFAULT, 0);
+    lv_obj_align(wifi_status_label, LV_ALIGN_RIGHT_MID, -6, 0);
 }
 
 /**
@@ -139,6 +153,37 @@ static void create_bottom_bar(void) {
     lv_obj_set_style_text_color(bottom_label, COLOR_TEXT_DIM, 0);
     lv_obj_set_style_text_font(bottom_label, LV_FONT_DEFAULT, 0);
     lv_obj_align(bottom_label, LV_ALIGN_CENTER, 0, 0);
+}
+
+/**
+ * 创建 Wi-Fi 设置页面
+ */
+static void create_wifi_page(void) {
+    wifi_page_obj = lv_obj_create(lv_scr_act());
+    lv_obj_set_size(wifi_page_obj, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_style_bg_color(wifi_page_obj, COLOR_BG, 0);
+    lv_obj_add_flag(wifi_page_obj, LV_OBJ_FLAG_HIDDEN); /* 默认隐藏 */
+    lv_obj_set_style_border_width(wifi_page_obj, 0, 0);
+    lv_obj_set_style_radius(wifi_page_obj, 0, 0);
+    obj_set_pad_all(wifi_page_obj, 0, 0);
+
+    lv_obj_t *title = lv_label_create(wifi_page_obj);
+    lv_label_set_text(title, LV_SYMBOL_WIFI " Wi-Fi Settings");
+    lv_obj_set_style_text_color(title, COLOR_TEXT, 0);
+    lv_obj_set_style_text_font(title, LV_FONT_DEFAULT, 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 30);
+
+    lv_obj_t *inst = lv_label_create(wifi_page_obj);
+    lv_label_set_text(inst, "To configure Wi-Fi, open serial\nterminal and send command:\n\nwifi <ssid> <password>\n\nPress BOOT button to exit.");
+    lv_obj_set_style_text_color(inst, COLOR_TEXT_DIM, 0);
+    lv_obj_set_style_text_align(inst, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(inst, LV_ALIGN_CENTER, 0, -10);
+
+    wifi_info_label = lv_label_create(wifi_page_obj);
+    lv_label_set_text(wifi_info_label, "SSID: None\nStatus: Disconnected");
+    lv_obj_set_style_text_color(wifi_info_label, COLOR_TEXT_DIM, 0);
+    lv_obj_set_style_text_align(wifi_info_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(wifi_info_label, LV_ALIGN_BOTTOM_MID, 0, -40);
 }
 
 /**
@@ -225,8 +270,9 @@ void lvgl_chat_ui_init(void) {
     /* 创建 UI 元素 */
     create_status_bar();
     create_chat_area();
-    create_progress_bar();  /* 新增：进度条 */
+    create_progress_bar();
     create_bottom_bar();
+    create_wifi_page();
 
     ESP_LOGI(TAG, "LVGL chat UI initialized");
 }
@@ -354,6 +400,56 @@ void lvgl_chat_ui_set_status(const char *state, const char *emotion) {
     if (emotion) {
         strncpy(current_emotion, emotion, sizeof(current_emotion) - 1);
         current_emotion[sizeof(current_emotion) - 1] = '\0';
+    }
+}
+
+/**
+ * 设置 Wi-Fi 状态显示
+ */
+void lvgl_chat_ui_set_wifi_status(bool connected) {
+    s_wifi_connected = connected;
+    if (wifi_status_label) {
+        if (connected) {
+            lv_label_set_text(wifi_status_label, LV_SYMBOL_WIFI);
+            lv_obj_set_style_text_color(wifi_status_label, COLOR_STATUS_IDLE, 0);
+        } else {
+            lv_label_set_text(wifi_status_label, LV_SYMBOL_WIFI);
+            lv_obj_set_style_text_color(wifi_status_label, COLOR_TEXT_DIM, 0);
+        }
+    }
+    
+    if (wifi_page_obj && !lv_obj_has_flag(wifi_page_obj, LV_OBJ_FLAG_HIDDEN)) {
+        // Defer updating the whole page to the caller if needed, or rely on boot key toggle to refresh it
+        // To avoid circular dependency with wifi_manager in UI file, we will let the main task pass IP.
+    }
+}
+
+/**
+ * 显示/隐藏 Wi-Fi 设置页面
+ */
+void lvgl_chat_ui_show_wifi_page(bool show, const char *saved_ssid, const char *ip_addr) {
+    if (!wifi_page_obj) return;
+    if (show) {
+        if (saved_ssid) {
+            strncpy(s_saved_ssid, saved_ssid, sizeof(s_saved_ssid) - 1);
+        }
+        lv_obj_clear_flag(wifi_page_obj, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(wifi_page_obj);
+
+        char buf[256];
+        if (s_wifi_connected) {
+            snprintf(buf, sizeof(buf), "SSID: %s\nStatus: Connected\nIP: %s", 
+                     strlen(s_saved_ssid) > 0 ? s_saved_ssid : "Unknown",
+                     (ip_addr && strlen(ip_addr) > 0) ? ip_addr : "Pending...");
+            if (wifi_info_label) lv_obj_set_style_text_color(wifi_info_label, COLOR_STATUS_IDLE, 0);
+        } else {
+            snprintf(buf, sizeof(buf), "SSID: %s\nStatus: Disconnected\nIP: None", 
+                     strlen(s_saved_ssid) > 0 ? s_saved_ssid : "None");
+            if (wifi_info_label) lv_obj_set_style_text_color(wifi_info_label, COLOR_TEXT_DIM, 0);
+        }
+        if (wifi_info_label) lv_label_set_text(wifi_info_label, buf);
+    } else {
+        lv_obj_add_flag(wifi_page_obj, LV_OBJ_FLAG_HIDDEN);
     }
 }
 

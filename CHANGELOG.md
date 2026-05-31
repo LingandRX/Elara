@@ -8,6 +8,11 @@
 ## [Unreleased]
 
 ### Added
+- Wi-Fi configuration support via UART terminal (`wifi <ssid> <password>` command)
+- NVS storage integration for automatic Wi-Fi credential saving and loading across reboots
+- Dedicated Wi-Fi Settings UI page to display instructions, current SSID, and IPv4 address
+- Mapped BOOT button to toggle the Wi-Fi Settings UI page
+- Wi-Fi connection status icon added to the main LVGL status bar
 - LVGL v9.1 图形库集成
 - LVGL 显示驱动适配层 (`main/display/lv_port_disp.c`)
 - LVGL 触摸输入适配层 (`main/input/lvgl_touch.c`)

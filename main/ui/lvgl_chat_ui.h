@@ -58,6 +58,20 @@ void lvgl_chat_ui_add_msg(const char *role, const char *text, const char *emotio
 void lvgl_chat_ui_set_status(const char *state, const char *emotion);
 
 /**
+ * 设置 Wi-Fi 状态显示
+ * @param connected true=已连接, false=未连接/断开
+ */
+void lvgl_chat_ui_set_wifi_status(bool connected);
+
+/**
+ * 显示/隐藏 Wi-Fi 设置页面
+ * @param show 是否显示
+ * @param saved_ssid 保存的 SSID
+ * @param ip_addr 设备的 IPv4 地址 (可以为空)
+ */
+void lvgl_chat_ui_show_wifi_page(bool show, const char *saved_ssid, const char *ip_addr);
+
+/**
  * 清空聊天
  */
 void lvgl_chat_ui_clear(void);

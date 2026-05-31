@@ -3,6 +3,7 @@
 #include "esp_log.h"
 #include <string.h>
 #include <stdio.h>
+#include "wifi_manager.h"
 
 static const char *TAG = "UART";
 static QueueHandle_t cmdQueue = NULL;
@@ -15,7 +16,31 @@ bool uart_comm_init(QueueHandle_t *queue) {
     return true;
 }
 
-static void parse_json(const char *line) {
+static void parse_terminal_cmd(const char *line) {
+    // Check if it's a wifi configuration command: "wifi <ssid> <password>"
+    if (strncmp(line, "wifi ", 5) == 0) {
+        char ssid[64] = {0};
+        char password[64] = {0};
+        
+        // Split command
+        const char *ssid_start = line + 5;
+        const char *space_pos = strchr(ssid_start, ' ');
+        if (space_pos) {
+            size_t ssid_len = space_pos - ssid_start;
+            if (ssid_len < sizeof(ssid)) {
+                strncpy(ssid, ssid_start, ssid_len);
+            }
+            const char *pass_start = space_pos + 1;
+            strncpy(password, pass_start, sizeof(password) - 1);
+            
+            ESP_LOGI(TAG, "Received Wi-Fi config via terminal. SSID: %s", ssid);
+            wifi_manager_set_config(ssid, password);
+            return;
+        }
+        ESP_LOGW(TAG, "Invalid wifi command format. Usage: wifi <ssid> <password>");
+        return;
+    }
+
     cJSON *root = cJSON_Parse(line);
     if (!root) {
         ESP_LOGW(TAG, "JSON parse failed: %s", line);
@@ -90,17 +115,15 @@ void uart_rx_task(void *pvParam) {
     ESP_LOGI(TAG, "UART RX task started, waiting for data on stdin...");
 
     int totalRx = 0;
-    ESP_LOGI(TAG, "UART RX task started, waiting for data on stdin...");
     while (1) {
         int c = getchar();
         if (c != EOF) {
             totalRx++;
-            ESP_LOGD(TAG, "Char: 0x%02X '%c'", (uint8_t)c, (c >= 32 && c < 127) ? c : '?');
             if (c == '\n') {
                 lineBuf[linePos] = '\0';
                 if (linePos > 0) {
                     ESP_LOGI(TAG, "RX line (%d chars, total=%d): %s", linePos, totalRx, lineBuf);
-                    parse_json(lineBuf);
+                    parse_terminal_cmd(lineBuf);
                 } else {
                     ESP_LOGW(TAG, "Empty line received");
                 }
