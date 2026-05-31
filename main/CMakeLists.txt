@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS
         "main.c"
+        "wifi_manager.c"
         "display/lv_port_disp.c"
         "ui/lvgl_chat_ui.c"
         "ui/lvgl_widgets.c"
@@ -19,4 +20,7 @@ idf_component_register(
         lvgl
         i2c_bsp
         esp_timer
+        esp_wifi
+        nvs_flash
+        esp_netif
 )

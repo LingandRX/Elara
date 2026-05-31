@@ -15,6 +15,7 @@
 #include "input/lvgl_touch.h"
 #include "ui/lvgl_chat_ui.h"
 #include "comm/uart_comm.h"
+#include "wifi_manager.h"
 #include "lvgl.h"
 
 static const char *TAG = "MAIN";
@@ -29,70 +30,10 @@ static bool on_color_trans_done(esp_lcd_panel_io_handle_t panel_io, esp_lcd_pane
     return false;
 }
 
-/**
- * Boot 按键颜色切换状态机
- */
-typedef enum {
-    BOOT_COLOR_IDLE = 0,
-    BOOT_COLOR_RED,
-} boot_color_state_t;
-
-static volatile boot_color_state_t boot_color_state = BOOT_COLOR_IDLE;
-
-/* 纯色遮罩层（用于 boot 按键颜色切换） */
-static lv_obj_t *boot_overlay = NULL;
+static bool wifi_page_active = false;
 
 /**
- * 显示指定 boot 颜色（通过 LVGL API，避免直接操作 SPI）
- */
-static void show_boot_color(boot_color_state_t state) {
-    /* 获取 LVGL 锁 */
-    if (!lv_port_disp_lock(-1)) {
-        ESP_LOGW(TAG, "Boot key: lock failed");
-        return;
-    }
-
-    if (state == BOOT_COLOR_IDLE) {
-        /* 回到主页面：删除遮罩层，触发 LVGL 重新渲染 */
-        if (boot_overlay) {
-            lv_obj_del(boot_overlay);
-            boot_overlay = NULL;
-        }
-        ESP_LOGI(TAG, "Boot key: IDLE (back to main UI)");
-        lv_port_disp_unlock();
-        return;
-    }
-
-    lv_color_t color;
-    const char *name;
-    switch (state) {
-        case BOOT_COLOR_RED:   color = lv_color_make(0xFF, 0x00, 0x00); name = "RED";   break;
-        default: lv_port_disp_unlock(); return;
-    }
-
-    ESP_LOGI(TAG, "Boot key: %s", name);
-
-    /* 创建或复用遮罩层 */
-    if (!boot_overlay) {
-        boot_overlay = lv_obj_create(lv_scr_act());
-        lv_obj_remove_style_all(boot_overlay);  /* 清除所有默认样式 */
-        lv_obj_set_style_pad_all(boot_overlay, 0, 0);
-        lv_obj_set_style_radius(boot_overlay, 0, 0);
-        lv_obj_set_size(boot_overlay, LCD_WIDTH, LCD_HEIGHT);
-        lv_obj_set_pos(boot_overlay, 0, 0);
-        lv_obj_set_style_bg_opa(boot_overlay, LV_OPA_COVER, 0);
-        /* 确保遮罩层在最上层 */
-        lv_obj_move_foreground(boot_overlay);
-    }
-
-    /* 设置遮罩层颜色 */
-    lv_obj_set_style_bg_color(boot_overlay, color, 0);
-
-    lv_port_disp_unlock();
-}
-
-/**
- * BOOT 按键检测任务：循环切换 IDLE → RED → IDLE
+ * BOOT 按键检测任务：循环切换主界面和 Wi-Fi 配置页面
  */
 static void boot_key_task(void *pvParam) {
     /* 配置 BOOT 按键 GPIO */
@@ -114,17 +55,25 @@ static void boot_key_task(void *pvParam) {
         if (last_level == 1 && level == 0) {
             vTaskDelay(pdMS_TO_TICKS(20)); /* 消抖 */
             if (gpio_get_level(BOOT_KEY_PIN) == 0) {
-                /* 切换状态：IDLE ↔ RED */
-                if (boot_color_state == BOOT_COLOR_IDLE) {
-                    boot_color_state = BOOT_COLOR_RED;
-                } else {
-                    boot_color_state = BOOT_COLOR_IDLE;
+                /* 切换页面状态 */
+                wifi_page_active = !wifi_page_active;
+                ESP_LOGI(TAG, "Boot key pressed. Wi-Fi page active: %d", wifi_page_active);
+
+                if (lv_port_disp_lock(-1)) {
+                    char ssid[64] = {0};
+                    char ip_addr[16] = {0};
+                    if (wifi_page_active) {
+                        wifi_manager_get_saved_config(ssid, sizeof(ssid));
+                        wifi_manager_get_ip(ip_addr, sizeof(ip_addr));
+                    }
+                    lvgl_chat_ui_show_wifi_page(wifi_page_active, ssid, ip_addr);
+                    lv_port_disp_unlock();
                 }
-                show_boot_color(boot_color_state);
-            }
-            /* 等待按键释放 */
-            while (gpio_get_level(BOOT_KEY_PIN) == 0) {
-                vTaskDelay(pdMS_TO_TICKS(10));
+
+                /* 等待按键释放 */
+                while (gpio_get_level(BOOT_KEY_PIN) == 0) {
+                    vTaskDelay(pdMS_TO_TICKS(10));
+                }
             }
         }
         last_level = level;
@@ -245,6 +194,9 @@ static esp_err_t lcd_init(void) {
 
 void app_main(void) {
     ESP_LOGI(TAG, "ESP32-S3 Chat Device Starting...");
+
+    /* Initialize NVS and Wi-Fi */
+    wifi_manager_init();
 
     /* 初始化 LCD 硬件 */
     ESP_ERROR_CHECK(lcd_init());
