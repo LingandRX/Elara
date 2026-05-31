@@ -18,5 +18,5 @@ idf_component_register(
         json
         lvgl
         i2c_bsp
-        esp_lcd_sh8601
+        esp_timer
 )
