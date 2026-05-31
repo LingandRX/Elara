@@ -155,6 +155,7 @@ void app_main(void) {
 
     /* 2. 初始化 LVGL 基础库 */
     lv_init();
+    lv_extra_init(); // 初始化额外组件（包括 PNG 解码器）
     lv_port_disp_init(panel); // 这里会初始化 Mutex
     lvgl_touch_init();
 
@@ -164,6 +165,7 @@ void app_main(void) {
 
     /* 4. 初始化存储 (首次运行可能耗时格式化) */
     storage_init();
+    storage_init_pet_dirs(); // 创建宠物动画所需的目录结构
 
     /* 5. 创建命令队列与串口通信模块 */
     cmdQueue = xQueueCreate(16, sizeof(UartCmd));

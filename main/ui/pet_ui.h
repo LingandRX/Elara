@@ -25,6 +25,11 @@ void pet_ui_init(void);
 void pet_ui_show(bool show);
 
 /**
+ * 刷新 Petdex 精灵图缓存
+ */
+void pet_ui_refresh(void);
+
+/**
  * 设置当前动画状态
  * @param state 动画状态
  */
