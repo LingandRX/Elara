@@ -15,6 +15,7 @@
 #include "input/lvgl_touch.h"
 #include "ui/lvgl_chat_ui.h"
 #include "comm/uart_comm.h"
+#include "comm/tcp_server.h"
 #include "wifi_manager.h"
 #include "lvgl.h"
 
@@ -225,6 +226,9 @@ void app_main(void) {
         ESP_LOGE(TAG, "UART init failed!");
         return;
     }
+
+    /* 初始化 TCP Server */
+    tcp_server_init();
 
     /* 显示欢迎界面 */
     lvgl_chat_ui_welcome();

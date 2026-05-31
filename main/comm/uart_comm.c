@@ -16,7 +16,7 @@ bool uart_comm_init(QueueHandle_t *queue) {
     return true;
 }
 
-static void parse_terminal_cmd(const char *line) {
+void comm_parse_cmd(const char *line) {
     // Check if it's a wifi configuration command: "wifi <ssid> <password>"
     if (strncmp(line, "wifi ", 5) == 0) {
         char ssid[64] = {0};
@@ -108,7 +108,6 @@ static void parse_terminal_cmd(const char *line) {
 
 // UART 接收任务 - 通过 stdin (USB-Serial/JTAG) 读取数据
 void uart_rx_task(void *pvParam) {
-    uint8_t rxBuf[RX_BUF_SIZE];
     char lineBuf[512];
     int linePos = 0;
 
@@ -123,7 +122,7 @@ void uart_rx_task(void *pvParam) {
                 lineBuf[linePos] = '\0';
                 if (linePos > 0) {
                     ESP_LOGI(TAG, "RX line (%d chars, total=%d): %s", linePos, totalRx, lineBuf);
-                    parse_terminal_cmd(lineBuf);
+                    comm_parse_cmd(lineBuf);
                 } else {
                     ESP_LOGW(TAG, "Empty line received");
                 }

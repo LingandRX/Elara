@@ -36,4 +36,7 @@ void uart_send_error(const char *msg);
 // UART 接收任务（内部创建）
 void uart_rx_task(void *pvParam);
 
+// 解析通用命令（暴露给 TCP 等其他模块使用）
+void comm_parse_cmd(const char *line);
+
 #endif
