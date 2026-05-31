@@ -35,8 +35,6 @@ static bool on_color_trans_done(esp_lcd_panel_io_handle_t panel_io, esp_lcd_pane
 typedef enum {
     BOOT_COLOR_IDLE = 0,
     BOOT_COLOR_RED,
-    BOOT_COLOR_GREEN,
-    BOOT_COLOR_BLUE,
 } boot_color_state_t;
 
 static volatile boot_color_state_t boot_color_state = BOOT_COLOR_IDLE;
@@ -69,8 +67,6 @@ static void show_boot_color(boot_color_state_t state) {
     const char *name;
     switch (state) {
         case BOOT_COLOR_RED:   color = lv_color_make(0xFF, 0x00, 0x00); name = "RED";   break;
-        case BOOT_COLOR_GREEN: color = lv_color_make(0x00, 0xFF, 0x00); name = "GREEN"; break;
-        case BOOT_COLOR_BLUE:  color = lv_color_make(0x00, 0x00, 0xFF); name = "BLUE";  break;
         default: lv_port_disp_unlock(); return;
     }
 
@@ -79,22 +75,24 @@ static void show_boot_color(boot_color_state_t state) {
     /* 创建或复用遮罩层 */
     if (!boot_overlay) {
         boot_overlay = lv_obj_create(lv_scr_act());
-        lv_obj_remove_style_all(boot_overlay);  /* 清除所有默认样式（圆角、边框、padding 等） */
+        lv_obj_remove_style_all(boot_overlay);  /* 清除所有默认样式 */
+        lv_obj_set_style_pad_all(boot_overlay, 0, 0);
+        lv_obj_set_style_radius(boot_overlay, 0, 0);
         lv_obj_set_size(boot_overlay, LCD_WIDTH, LCD_HEIGHT);
         lv_obj_set_pos(boot_overlay, 0, 0);
+        lv_obj_set_style_bg_opa(boot_overlay, LV_OPA_COVER, 0);
         /* 确保遮罩层在最上层 */
         lv_obj_move_foreground(boot_overlay);
     }
 
     /* 设置遮罩层颜色 */
     lv_obj_set_style_bg_color(boot_overlay, color, 0);
-    lv_obj_set_style_bg_opa(boot_overlay, LV_OPA_COVER, 0);
 
     lv_port_disp_unlock();
 }
 
 /**
- * BOOT 按键检测任务：循环切换 IDLE → RED → GREEN → BLUE → IDLE
+ * BOOT 按键检测任务：循环切换 IDLE → RED → IDLE
  */
 static void boot_key_task(void *pvParam) {
     /* 配置 BOOT 按键 GPIO */
@@ -116,9 +114,10 @@ static void boot_key_task(void *pvParam) {
         if (last_level == 1 && level == 0) {
             vTaskDelay(pdMS_TO_TICKS(20)); /* 消抖 */
             if (gpio_get_level(BOOT_KEY_PIN) == 0) {
-                /* 切换状态 */
-                boot_color_state++;
-                if (boot_color_state > BOOT_COLOR_BLUE) {
+                /* 切换状态：IDLE ↔ RED */
+                if (boot_color_state == BOOT_COLOR_IDLE) {
+                    boot_color_state = BOOT_COLOR_RED;
+                } else {
                     boot_color_state = BOOT_COLOR_IDLE;
                 }
                 show_boot_color(boot_color_state);
@@ -222,7 +221,8 @@ static esp_err_t lcd_init(void) {
     /* ST7789V2 面板配置 */
     esp_lcd_panel_dev_config_t panel_config = {
         .reset_gpio_num = LCD_PIN_RST,
-        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
+        // .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR,
+        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB, 
         .bits_per_pixel = 16,
         .data_endian = LCD_RGB_DATA_ENDIAN_BIG,
     };
@@ -231,6 +231,7 @@ static esp_err_t lcd_init(void) {
     /* 复位并初始化面板 */
     ESP_ERROR_CHECK(esp_lcd_panel_reset(panel));
     ESP_ERROR_CHECK(esp_lcd_panel_init(panel));
+    ESP_ERROR_CHECK(esp_lcd_panel_invert_color(panel, true));
 
     /* 设置 X 偏移（170×320 面板在 240×320 控制器中的偏移） */
     ESP_ERROR_CHECK(esp_lcd_panel_set_gap(panel, 35, 0));

@@ -144,6 +144,7 @@ idf.py menuconfig
 - LVGL 版本: 9.1，通过 ESP-IDF 组件管理器集成
 - LVGL 显示缓冲: 单缓冲模式，40 行部分渲染
 - LVGL 处理频率: 100Hz (10ms 间隔)
+- LCD 颜色配置排查: LVGL 输出 RGB565，`LV_COLOR_16_SWAP` 只处理 16 位像素字节序；`rgb_ele_order` 处理 R/B 通道顺序；`esp_lcd_panel_invert_color()` 处理面板反相。若 RED 显示为黄色，通常是 `rgb_ele_order` 配成 BGR 后红色先被解释为蓝色，再被反相成黄色；本板实测 RED 正确显示需要使用 `LCD_RGB_ELEMENT_ORDER_RGB`，并根据屏幕极性确认 `invert_color` 状态。
 - 触摸坐标映射: 原始坐标 (0-4095) → 屏幕坐标 (0-169, 0-319)
 - 背光控制: LEDC PWM，低电平亮（duty=0 最亮，duty=255 最暗）
 - 初始化顺序: LCD → LVGL → I2C → 触摸 → UI → 背光
