@@ -69,6 +69,7 @@ idf.py menuconfig
 **模块结构**:
 - `main/main.c` - 程序入口，LCD 初始化，任务创建
 - `main/display/lv_port_disp.c` - LVGL 显示端口（使用 esp_lcd API）
+- `main/display/backlight_manager.c` - 背光管理器（亮度调节、自动休眠、渐变动效）
 - `main/display/lcd_config.h` - LCD 配置常量
 - `main/input/lvgl_touch.c` - LVGL 触摸输入适配层
 - `main/ui/lvgl_chat_ui.c` - LVGL 聊天界面（使用 LVGL 控件）
@@ -146,5 +147,6 @@ idf.py menuconfig
 - LVGL 处理频率: 100Hz (10ms 间隔)
 - LCD 颜色配置排查: LVGL 输出 RGB565，`LV_COLOR_16_SWAP` 只处理 16 位像素字节序；`rgb_ele_order` 处理 R/B 通道顺序；`esp_lcd_panel_invert_color()` 处理面板反相。若 RED 显示为黄色，通常是 `rgb_ele_order` 配成 BGR 后红色先被解释为蓝色，再被反相成黄色；本板实测 RED 正确显示需要使用 `LCD_RGB_ELEMENT_ORDER_RGB`，并根据屏幕极性确认 `invert_color` 状态。
 - 触摸坐标映射: 原始坐标 (0-4095) → 屏幕坐标 (0-169, 0-319)
-- 背光控制: LEDC PWM，低电平亮（duty=0 最亮，duty=255 最暗）
-- 初始化顺序: LCD → LVGL → I2C → 触摸 → UI → 背光
+- 背光控制: LEDC PWM，低电平亮（duty=0 最亮，duty=255 最暗），由 `backlight_manager` 模块统一管理，支持 0-255 亮度调节、自动休眠/唤醒、渐变动效
+- 背光文档: `docs/Backlight_Manager.md`
+- 初始化顺序: LCD → LVGL → I2C → 触摸 → UI → backlight_manager

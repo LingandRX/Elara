@@ -12,6 +12,7 @@
 
 #include "display/lcd_config.h"
 #include "display/lv_port_disp.h"
+#include "display/backlight_manager.h"
 #include "input/lvgl_touch.h"
 #include "ui/lvgl_chat_ui.h"
 #include "ui/pet_ui.h"
@@ -177,7 +178,8 @@ void app_main(void) {
 
     lvgl_chat_ui_welcome();
     vTaskDelay(pdMS_TO_TICKS(50));
-    lv_port_disp_set_backlight(true);
+    backlight_manager_init(BL_DEFAULT_BRIGHTNESS);
+    backlight_set_on(true);
 
     xTaskCreate(lvgl_handler_task, "lvgl_handler", 8192, NULL, 2, NULL);
     xTaskCreate(uart_rx_task, "uart_rx", 4096, NULL, 5, NULL);

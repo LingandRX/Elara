@@ -35,4 +35,11 @@
 #define BL_DUTY_ON          0
 #define BL_DUTY_OFF         255
 
+/* 背光管理默认配置 */
+#define BL_DEFAULT_BRIGHTNESS   125         /* 默认最亮 */
+#define BL_SLEEP_TIMEOUT_MS     10000       /* 无操作 10 秒后休眠 */
+#define BL_DIM_BRIGHTNESS       0           /* 休眠时亮度，0=直接关闭 */
+#define BL_FADE_STEP_MS         20          /* 渐变动效每步间隔 */
+#define BL_FADE_STEP_DELTA      8           /* 渐变动效每步亮度变化 */
+
 #endif /* LCD_CONFIG_H */

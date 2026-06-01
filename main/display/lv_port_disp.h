@@ -27,12 +27,6 @@ void lv_port_disp_init(esp_lcd_panel_handle_t panel);
 void lv_port_disp_set_boot_mode(bool boot);
 
 /**
- * 设置背光
- * @param on true=开启, false=关闭
- */
-void lv_port_disp_set_backlight(bool on);
-
-/**
  * 获取 LVGL 互斥锁
  * @param timeout_ms 超时时间（毫秒），-1 表示永久等待
  * @return true=获取成功, false=超时
