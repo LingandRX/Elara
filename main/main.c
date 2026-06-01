@@ -38,6 +38,7 @@ typedef enum {
     PAGE_CHAT,
     PAGE_WIFI,
     PAGE_PETDEX,
+    PAGE_BACKLIGHT,
     PAGE_MAX
 } UIPage;
 
@@ -63,9 +64,11 @@ static void boot_key_task(void *pvParam) {
             vTaskDelay(pdMS_TO_TICKS(20));
             if (gpio_get_level(BOOT_KEY_PIN) == 0) {
                 s_current_page = (s_current_page + 1) % PAGE_MAX;
+                ESP_LOGI(TAG, "BOOT key: switch to page %d", s_current_page);
                 if (lv_port_disp_lock(-1)) {
                     lvgl_chat_ui_show_wifi_page(false, NULL, NULL);
                     pet_ui_show(false);
+                    lvgl_chat_ui_show_bl_page(false);
                     if (s_current_page == PAGE_WIFI) {
                         char ssid[64] = {0}, ip_addr[16] = {0};
                         wifi_manager_get_saved_config(ssid, sizeof(ssid));
@@ -73,6 +76,8 @@ static void boot_key_task(void *pvParam) {
                         lvgl_chat_ui_show_wifi_page(true, ssid, ip_addr);
                     } else if (s_current_page == PAGE_PETDEX) {
                         pet_ui_show(true);
+                    } else if (s_current_page == PAGE_BACKLIGHT) {
+                        lvgl_chat_ui_show_bl_page(true);
                     }
                     lv_port_disp_unlock();
                 }

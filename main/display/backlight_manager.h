@@ -66,6 +66,12 @@ bool backlight_is_sleeping(void);
  */
 bool backlight_is_fade_enabled(void);
 
+/**
+ * 获取当前自动休眠超时时间
+ * @return 超时时间（毫秒）
+ */
+uint32_t backlight_get_sleep_timeout_ms(void);
+
 #ifdef __cplusplus
 }
 #endif

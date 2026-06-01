@@ -6,6 +6,7 @@
 #include "lvgl_chat_ui.h"
 #include "pet_anim.h"
 #include "pet_ui.h"
+#include "display/backlight_manager.h"
 #include "esp_log.h"
 #include <string.h>
 #include <stdio.h>
@@ -45,6 +46,17 @@ static lv_obj_t *wifi_page_obj = NULL;
 static lv_obj_t *wifi_info_label = NULL;
 static bool s_wifi_connected = false;
 static char s_saved_ssid[64] = "";
+
+/* 背光管理页面元素与状态 */
+static lv_obj_t *bl_page_obj = NULL;
+static lv_obj_t *bl_bright_val_label = NULL;
+static lv_obj_t *bl_sleep_val_label = NULL;
+static lv_obj_t *bl_btn_bright_minus = NULL;
+static lv_obj_t *bl_btn_bright_plus = NULL;
+static lv_obj_t *bl_btn_sleep_minus = NULL;
+static lv_obj_t *bl_btn_sleep_plus = NULL;
+static uint8_t s_bl_brightness = 255;
+static uint32_t s_bl_sleep_timeout_s = 10;
 
 /* 消息列表 */
 static ChatMessage messages[MAX_MESSAGES];
@@ -189,6 +201,257 @@ static void create_wifi_page(void) {
 }
 
 /**
+ * 更新背光页面亮度显示
+ */
+static void bl_page_update_bright_label(void) {
+    if (!bl_bright_val_label) return;
+    int pct = (s_bl_brightness * 100) / 255;
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d%%", pct);
+    lv_label_set_text(bl_bright_val_label, buf);
+}
+
+/**
+ * 更新背光页面休眠时间显示
+ */
+static void bl_page_update_sleep_label(void) {
+    if (!bl_sleep_val_label) return;
+    char buf[16];
+    if (s_bl_sleep_timeout_s >= 60) {
+        snprintf(buf, sizeof(buf), "%lumin", s_bl_sleep_timeout_s / 60);
+    } else {
+        snprintf(buf, sizeof(buf), "%lus", s_bl_sleep_timeout_s);
+    }
+    lv_label_set_text(bl_sleep_val_label, buf);
+}
+
+/**
+ * 背光亮度按钮事件回调
+ */
+/**
+ * 背光亮度按钮事件回调
+ */
+static void bl_bright_btn_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t *btn = lv_event_get_target(e);
+    
+    ESP_LOGI(TAG, "BL bright btn event: code=%d target=%p minus=%p plus=%p",
+             code, (void *)btn, (void *)bl_btn_bright_minus, (void *)bl_btn_bright_plus);
+    
+    if (code != LV_EVENT_CLICKED) {
+        ESP_LOGD(TAG, "BL bright btn: ignoring non-CLICKED event");
+        return;
+    }
+    
+    int delta = 0;
+    
+    if (btn == bl_btn_bright_minus) {
+        delta = -25;
+    } else if (btn == bl_btn_bright_plus) {
+        delta = 25;
+    } else {
+        ESP_LOGW(TAG, "BL bright btn callback: unknown button target=%p", (void *)btn);
+        return;
+    }
+    
+    ESP_LOGI(TAG, "BL bright btn CLICKED delta=%d, current=%u -> new=%u", 
+             delta, s_bl_brightness, (uint8_t)((int)s_bl_brightness + delta));
+    
+    int new_val = (int)s_bl_brightness + delta;
+    if (new_val < 0) new_val = 0;
+    if (new_val > 255) new_val = 255;
+    s_bl_brightness = (uint8_t)new_val;
+    
+    ESP_LOGI(TAG, "Setting brightness to %u%% (%u/255)", (s_bl_brightness * 100) / 255, s_bl_brightness);
+    backlight_set_brightness(s_bl_brightness);
+    bl_page_update_bright_label();
+}
+
+/**
+ * 自动休眠按钮事件回调
+ */
+static void bl_sleep_btn_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t *btn = lv_event_get_target(e);
+    
+    ESP_LOGI(TAG, "BL sleep btn event: code=%d target=%p minus=%p plus=%p",
+             code, (void *)btn, (void *)bl_btn_sleep_minus, (void *)bl_btn_sleep_plus);
+    
+    if (code != LV_EVENT_CLICKED) {
+        ESP_LOGD(TAG, "BL sleep btn: ignoring non-CLICKED event");
+        return;
+    }
+    
+    int delta = 0;
+    
+    if (btn == bl_btn_sleep_minus) {
+        delta = -5;
+    } else if (btn == bl_btn_sleep_plus) {
+        delta = 5;
+    } else {
+        ESP_LOGW(TAG, "BL sleep btn callback: unknown button target=%p", (void *)btn);
+        return;
+    }
+    
+    ESP_LOGI(TAG, "BL sleep btn CLICKED delta=%d, current=%lus -> new=%lu", 
+             delta, s_bl_sleep_timeout_s, s_bl_sleep_timeout_s + delta);
+    
+    int new_val = (int)s_bl_sleep_timeout_s + delta;
+    if (new_val < 5) new_val = 5;
+    if (new_val > 300) new_val = 300;
+    s_bl_sleep_timeout_s = (uint32_t)new_val;
+    
+    ESP_LOGI(TAG, "Setting auto sleep timeout to %lus", s_bl_sleep_timeout_s);
+    backlight_enable_auto_sleep(true, s_bl_sleep_timeout_s * 1000, 0);
+    bl_page_update_sleep_label();
+}
+
+/**
+ * 创建背光管理页面
+ */
+static void create_bl_page(void) {
+    bl_page_obj = lv_obj_create(lv_scr_act());
+    lv_obj_set_size(bl_page_obj, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_style_bg_color(bl_page_obj, COLOR_BG, 0);
+    lv_obj_add_flag(bl_page_obj, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_style_border_width(bl_page_obj, 0, 0);
+    lv_obj_set_style_radius(bl_page_obj, 0, 0);
+    obj_set_pad_all(bl_page_obj, 0, 0);
+    /* 禁用页面滚动，避免拦截子对象的点击事件 */
+    lv_obj_clear_flag(bl_page_obj, LV_OBJ_FLAG_SCROLLABLE);
+
+    /* 标题 */
+    lv_obj_t *title = lv_label_create(bl_page_obj);
+    lv_label_set_text(title, LV_SYMBOL_SETTINGS " Backlight");
+    lv_obj_set_style_text_color(title, COLOR_TEXT, 0);
+    lv_obj_set_style_text_font(title, LV_FONT_DEFAULT, 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 30);
+
+    /* ========== 亮度控制区 ========== */
+    lv_obj_t *bright_label = lv_label_create(bl_page_obj);
+    lv_label_set_text(bright_label, "Brightness");
+    lv_obj_set_style_text_color(bright_label, COLOR_TEXT, 0);
+    lv_obj_set_style_text_font(bright_label, LV_FONT_DEFAULT, 0);
+    lv_obj_align(bright_label, LV_ALIGN_TOP_LEFT, 12, 75);
+
+    bl_bright_val_label = lv_label_create(bl_page_obj);
+    lv_obj_set_style_text_color(bl_bright_val_label, COLOR_LABEL_AI, 0);
+    lv_obj_set_style_text_font(bl_bright_val_label, LV_FONT_DEFAULT, 0);
+    lv_obj_align(bl_bright_val_label, LV_ALIGN_TOP_RIGHT, -12, 75);
+
+    /* 亮度减按钮 */
+    bl_btn_bright_minus = lv_obj_create(bl_page_obj);
+    lv_obj_set_size(bl_btn_bright_minus, 50, 36);
+    lv_obj_set_style_bg_color(bl_btn_bright_minus, COLOR_AI_BUB, 0);
+    lv_obj_set_style_border_width(bl_btn_bright_minus, 1, 0);
+    lv_obj_set_style_border_color(bl_btn_bright_minus, COLOR_USER_BUB, 0);
+    lv_obj_set_style_radius(bl_btn_bright_minus, 6, 0);
+    lv_obj_align(bl_btn_bright_minus, LV_ALIGN_TOP_MID, -36, 105);
+    lv_obj_add_flag(bl_btn_bright_minus, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(bl_btn_bright_minus, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(bl_btn_bright_minus, bl_bright_btn_cb, LV_EVENT_CLICKED, NULL);
+    
+    lv_obj_t *lbl_minus1 = lv_label_create(bl_btn_bright_minus);
+    lv_label_set_text(lbl_minus1, "-");
+    lv_obj_set_style_text_color(lbl_minus1, COLOR_TEXT, 0);
+    lv_obj_center(lbl_minus1);
+
+    /* 亮度加按钮 */
+    bl_btn_bright_plus = lv_obj_create(bl_page_obj);
+    lv_obj_set_size(bl_btn_bright_plus, 50, 36);
+    lv_obj_set_style_bg_color(bl_btn_bright_plus, COLOR_AI_BUB, 0);
+    lv_obj_set_style_border_width(bl_btn_bright_plus, 1, 0);
+    lv_obj_set_style_border_color(bl_btn_bright_plus, COLOR_USER_BUB, 0);
+    lv_obj_set_style_radius(bl_btn_bright_plus, 6, 0);
+    lv_obj_align(bl_btn_bright_plus, LV_ALIGN_TOP_MID, 36, 105);
+    lv_obj_add_flag(bl_btn_bright_plus, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(bl_btn_bright_plus, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(bl_btn_bright_plus, bl_bright_btn_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *lbl_plus1 = lv_label_create(bl_btn_bright_plus);
+    lv_label_set_text(lbl_plus1, "+");
+    lv_obj_set_style_text_color(lbl_plus1, COLOR_TEXT, 0);
+    lv_obj_center(lbl_plus1);
+
+    /* ========== 自动休眠控制区 ========== */
+    lv_obj_t *sleep_label = lv_label_create(bl_page_obj);
+    lv_label_set_text(sleep_label, "Auto Sleep");
+    lv_obj_set_style_text_color(sleep_label, COLOR_TEXT, 0);
+    lv_obj_set_style_text_font(sleep_label, LV_FONT_DEFAULT, 0);
+    lv_obj_align(sleep_label, LV_ALIGN_TOP_LEFT, 12, 180);
+
+    bl_sleep_val_label = lv_label_create(bl_page_obj);
+    lv_obj_set_style_text_color(bl_sleep_val_label, COLOR_LABEL_AI, 0);
+    lv_obj_set_style_text_font(bl_sleep_val_label, LV_FONT_DEFAULT, 0);
+    lv_obj_align(bl_sleep_val_label, LV_ALIGN_TOP_RIGHT, -12, 180);
+
+    /* 休眠减按钮 */
+    bl_btn_sleep_minus = lv_obj_create(bl_page_obj);
+    lv_obj_set_size(bl_btn_sleep_minus, 50, 36);
+    lv_obj_set_style_bg_color(bl_btn_sleep_minus, COLOR_AI_BUB, 0);
+    lv_obj_set_style_border_width(bl_btn_sleep_minus, 1, 0);
+    lv_obj_set_style_border_color(bl_btn_sleep_minus, COLOR_USER_BUB, 0);
+    lv_obj_set_style_radius(bl_btn_sleep_minus, 6, 0);
+    lv_obj_align(bl_btn_sleep_minus, LV_ALIGN_TOP_MID, -36, 210);
+    lv_obj_add_flag(bl_btn_sleep_minus, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(bl_btn_sleep_minus, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(bl_btn_sleep_minus, bl_sleep_btn_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *lbl_minus2 = lv_label_create(bl_btn_sleep_minus);
+    lv_label_set_text(lbl_minus2, "-");
+    lv_obj_set_style_text_color(lbl_minus2, COLOR_TEXT, 0);
+    lv_obj_center(lbl_minus2);
+
+    /* 休眠加按钮 */
+    bl_btn_sleep_plus = lv_obj_create(bl_page_obj);
+    lv_obj_set_size(bl_btn_sleep_plus, 50, 36);
+    lv_obj_set_style_bg_color(bl_btn_sleep_plus, COLOR_AI_BUB, 0);
+    lv_obj_set_style_border_width(bl_btn_sleep_plus, 1, 0);
+    lv_obj_set_style_border_color(bl_btn_sleep_plus, COLOR_USER_BUB, 0);
+    lv_obj_set_style_radius(bl_btn_sleep_plus, 6, 0);
+    lv_obj_align(bl_btn_sleep_plus, LV_ALIGN_TOP_MID, 36, 210);
+    lv_obj_add_flag(bl_btn_sleep_plus, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(bl_btn_sleep_plus, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(bl_btn_sleep_plus, bl_sleep_btn_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *lbl_plus2 = lv_label_create(bl_btn_sleep_plus);
+    lv_label_set_text(lbl_plus2, "+");
+    lv_obj_set_style_text_color(lbl_plus2, COLOR_TEXT, 0);
+    lv_obj_center(lbl_plus2);
+
+    /* 底部提示 */
+    lv_obj_t *hint = lv_label_create(bl_page_obj);
+    lv_label_set_text(hint, "Press BOOT to exit");
+    lv_obj_set_style_text_color(hint, COLOR_TEXT_DIM, 0);
+    lv_obj_set_style_text_font(hint, LV_FONT_DEFAULT, 0);
+    lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -20);
+
+    /* 初始化显示值：从 backlight_manager 同步实际配置 */
+    s_bl_brightness = backlight_get_brightness();
+    s_bl_sleep_timeout_s = backlight_get_sleep_timeout_ms() / 1000;
+    if (s_bl_sleep_timeout_s < 5) s_bl_sleep_timeout_s = 5;
+    bl_page_update_bright_label();
+    bl_page_update_sleep_label();
+    
+    /* 强制更新布局以获得正确的坐标 */
+    lv_obj_update_layout(bl_page_obj);
+    
+    ESP_LOGI(TAG, "Backlight buttons created:");
+    ESP_LOGI(TAG, "  bright_minus: x=%d y=%d (size %d x %d)", 
+             lv_obj_get_x(bl_btn_bright_minus), lv_obj_get_y(bl_btn_bright_minus),
+             lv_obj_get_width(bl_btn_bright_minus), lv_obj_get_height(bl_btn_bright_minus));
+    ESP_LOGI(TAG, "  bright_plus:  x=%d y=%d (size %d x %d)", 
+             lv_obj_get_x(bl_btn_bright_plus), lv_obj_get_y(bl_btn_bright_plus),
+             lv_obj_get_width(bl_btn_bright_plus), lv_obj_get_height(bl_btn_bright_plus));
+    ESP_LOGI(TAG, "  sleep_minus:  x=%d y=%d (size %d x %d)", 
+             lv_obj_get_x(bl_btn_sleep_minus), lv_obj_get_y(bl_btn_sleep_minus),
+             lv_obj_get_width(bl_btn_sleep_minus), lv_obj_get_height(bl_btn_sleep_minus));
+    ESP_LOGI(TAG, "  sleep_plus:   x=%d y=%d (size %d x %d)", 
+             lv_obj_get_x(bl_btn_sleep_plus), lv_obj_get_y(bl_btn_sleep_plus),
+             lv_obj_get_width(bl_btn_sleep_plus), lv_obj_get_height(bl_btn_sleep_plus));
+}
+
+/**
  * 创建消息气泡
  */
 static lv_obj_t *create_message_bubble(MsgRole role, const char *text) {
@@ -275,6 +538,7 @@ void lvgl_chat_ui_init(void) {
     create_progress_bar();
     create_bottom_bar();
     create_wifi_page();
+    create_bl_page();
 
     ESP_LOGI(TAG, "LVGL chat UI initialized");
 }
@@ -469,6 +733,35 @@ void lvgl_chat_ui_show_wifi_page(bool show, const char *saved_ssid, const char *
         if (wifi_info_label) lv_label_set_text(wifi_info_label, buf);
     } else {
         lv_obj_add_flag(wifi_page_obj, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+/**
+ * 显示/隐藏背光管理页面
+ */
+void lvgl_chat_ui_show_bl_page(bool show) {
+    if (!bl_page_obj) return;
+    if (show) {
+        s_bl_brightness = backlight_get_brightness();
+        s_bl_sleep_timeout_s = backlight_get_sleep_timeout_ms() / 1000;
+        if (s_bl_sleep_timeout_s < 5) s_bl_sleep_timeout_s = 5;
+        bl_page_update_bright_label();
+        bl_page_update_sleep_label();
+        lv_obj_clear_flag(bl_page_obj, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(bl_page_obj);
+        
+        /* 强制更新布局 */
+        lv_obj_update_layout(bl_page_obj);
+        
+        ESP_LOGI(TAG, "Backlight page SHOWN, bright=%u, timeout=%lus", s_bl_brightness, s_bl_sleep_timeout_s);
+        ESP_LOGI(TAG, "Button positions after layout update:");
+        ESP_LOGI(TAG, "  bright_minus: x=%d y=%d", lv_obj_get_x(bl_btn_bright_minus), lv_obj_get_y(bl_btn_bright_minus));
+        ESP_LOGI(TAG, "  bright_plus:  x=%d y=%d", lv_obj_get_x(bl_btn_bright_plus), lv_obj_get_y(bl_btn_bright_plus));
+        ESP_LOGI(TAG, "  sleep_minus:  x=%d y=%d", lv_obj_get_x(bl_btn_sleep_minus), lv_obj_get_y(bl_btn_sleep_minus));
+        ESP_LOGI(TAG, "  sleep_plus:   x=%d y=%d", lv_obj_get_x(bl_btn_sleep_plus), lv_obj_get_y(bl_btn_sleep_plus));
+    } else {
+        lv_obj_add_flag(bl_page_obj, LV_OBJ_FLAG_HIDDEN);
+        ESP_LOGI(TAG, "Backlight page HIDDEN");
     }
 }
 
