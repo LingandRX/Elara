@@ -133,17 +133,6 @@ void lv_port_disp_set_boot_mode(bool boot) {
 }
 
 /**
- * 设置背光
- */
-void lv_port_disp_set_backlight(bool on) {
-    // 此开发板背光为低电平亮（反相控制）
-    uint32_t duty = on ? BL_DUTY_ON : BL_DUTY_OFF;
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, duty);
-    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
-    ESP_LOGI(TAG, "Backlight set to %s (duty=%lu)", on ? "ON" : "OFF", duty);
-}
-
-/**
  * 获取 LVGL 互斥锁
  */
 bool lv_port_disp_lock(int timeout_ms) {
