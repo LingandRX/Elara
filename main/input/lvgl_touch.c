@@ -20,6 +20,7 @@ static lv_indev_t *touch_indev = NULL;
 static uint16_t last_x = 0;
 static uint16_t last_y = 0;
 static bool is_pressed = false;
+static uint32_t log_counter = 0;
 
 /**
  * LVGL 触摸读取回调
@@ -29,10 +30,10 @@ static void touch_read_cb(lv_indev_drv_t *indev_drv, lv_indev_data_t *data) {
     uint8_t touched = getTouch(&x, &y);
 
     if (touched) {
-        /* 坐标映射: 触摸坐标 (0-4095) -> 屏幕坐标 (0-169, 0-319) */
-        /* 注意: 可能需要根据实际触摸方向调整 */
-        last_x = (uint16_t)((x * LCD_WIDTH) / 4096);
-        last_y = (uint16_t)((y * LCD_HEIGHT) / 4096);
+        /* CST816T 触摸坐标已直接对应屏幕像素坐标 (0-170, 0-320)
+           不需要缩放转换 */
+        last_x = x;
+        last_y = y;
 
         /* 坐标裁剪 */
         if (last_x >= LCD_WIDTH) last_x = LCD_WIDTH - 1;
@@ -42,7 +43,16 @@ static void touch_read_cb(lv_indev_drv_t *indev_drv, lv_indev_data_t *data) {
         data->state = LV_INDEV_STATE_PRESSED;
         data->point.x = last_x;
         data->point.y = last_y;
+
+        /* 限流打印触摸坐标日志，约每 30 帧打印一次 */
+        if (++log_counter >= 30) {
+            log_counter = 0;
+            ESP_LOGI(TAG, "Touch PRESSED: screen=(%u,%u)", last_x, last_y);
+        }
     } else {
+        if (is_pressed) {
+            ESP_LOGI(TAG, "Touch RELEASED: at=(%u,%u)", last_x, last_y);
+        }
         is_pressed = false;
         data->state = LV_INDEV_STATE_RELEASED;
         data->point.x = last_x;

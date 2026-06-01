@@ -172,6 +172,17 @@ bool backlight_is_fade_enabled(void) {
 }
 
 /**
+ * 获取当前自动休眠超时时间
+ */
+uint32_t backlight_get_sleep_timeout_ms(void) {
+    uint32_t timeout = BL_SLEEP_TIMEOUT_MS;
+    if (s_bl_mux) xSemaphoreTake(s_bl_mux, portMAX_DELAY);
+    timeout = s_sleep_timeout_ms;
+    if (s_bl_mux) xSemaphoreGive(s_bl_mux);
+    return timeout;
+}
+
+/**
  * 渐变动效定时器回调
  * 在定时器服务任务上下文中执行
  */
@@ -212,27 +223,35 @@ static void backlight_monitor_task(void *pvParam) {
     (void)pvParam;
 
     while (1) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelay(pdMS_TO_TICKS(200));
 
-        if (!s_auto_sleep_enabled) {
+        /* 加锁读取共享配置 */
+        uint32_t timeout_ms = BL_SLEEP_TIMEOUT_MS;
+        bool auto_sleep_enabled = true;
+        if (s_bl_mux) xSemaphoreTake(s_bl_mux, portMAX_DELAY);
+        auto_sleep_enabled = s_auto_sleep_enabled;
+        timeout_ms = s_sleep_timeout_ms;
+        if (s_bl_mux) xSemaphoreGive(s_bl_mux);
+
+        if (!auto_sleep_enabled) {
             s_last_inactive = 0;
             continue;
         }
 
         uint32_t inactive = lv_disp_get_inactive_time(NULL);
 
-        if (inactive >= s_sleep_timeout_ms && !s_is_sleeping) {
+        if (inactive >= timeout_ms && !s_is_sleeping) {
             /* 进入休眠：保存当前亮度并降低/关闭 */
             s_is_sleeping = true;
             s_saved_brightness = s_current_brightness;
             backlight_set_brightness(s_dim_brightness);
-            ESP_LOGI(TAG, "Auto sleep: dimmed to %u after %lu ms inactive",
-                     s_dim_brightness, inactive);
-        } else if (s_is_sleeping && inactive < s_last_inactive) {
-            /* inactive 时间下降说明有用户输入，唤醒 */
+            ESP_LOGI(TAG, "Auto sleep: dimmed to %u after %lu ms inactive (timeout=%lu)",
+                     s_dim_brightness, inactive, timeout_ms);
+        } else if (s_is_sleeping && inactive < 200) {
+            /* inactive 重置到很低值说明有用户输入，唤醒 */
             s_is_sleeping = false;
             backlight_set_brightness(s_saved_brightness);
-            ESP_LOGI(TAG, "Auto sleep: restored to %u", s_saved_brightness);
+            ESP_LOGI(TAG, "Auto sleep: restored to %u (inactive=%lu)", s_saved_brightness, inactive);
         }
 
         s_last_inactive = inactive;

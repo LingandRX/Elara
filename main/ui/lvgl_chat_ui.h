@@ -98,6 +98,12 @@ void lvgl_chat_ui_welcome(void);
 void lvgl_chat_ui_set_progress(int value);
 
 /**
+ * 显示/隐藏背光管理页面
+ * @param show 是否显示
+ */
+void lvgl_chat_ui_show_bl_page(bool show);
+
+/**
  * 获取 UI 容器
  * @return lv_obj_t 指针
  */
