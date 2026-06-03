@@ -7,6 +7,7 @@
 #include "wifi_manager.h"
 #include "ui/pet_ui.h"
 #include "display/lv_port_disp.h"
+#include "buddy/buddy_state.h"
 
 static const char *TAG = "COMM";
 static QueueHandle_t cmdQueue = NULL;
@@ -170,6 +171,8 @@ void comm_parse_cmd(const char *line) {
             }
         }
     }
+    /* 同时传递给 buddy_state 处理（权限、时间同步等） */
+    buddy_feed_usb_line(line, strlen(line));
     cJSON_Delete(root);
 }
 
@@ -194,6 +197,11 @@ void uart_rx_task(void *pvParam) {
             vTaskDelay(pdMS_TO_TICKS(10));
         }
     }
+}
+
+void uart_send_raw(const char *data, size_t len) {
+    printf("%.*s", (int)len, data);
+    fflush(stdout);
 }
 
 void uart_send_event(const char *source, const char *action) {

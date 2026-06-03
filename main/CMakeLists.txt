@@ -9,15 +9,23 @@ idf_component_register(
         "ui/lvgl_widgets.c"
         "ui/pet_anim.c"
         "ui/pet_ui.c"
+        "ui/buddy/buddy_ui.c"
+        "ui/buddy/buddy_anim.c"
         "comm/uart_comm.c"
         "comm/tcp_server.c"
+        "comm/ble_bridge.c"
+        "comm/xfer.c"
         "input/lvgl_touch.c"
+        "buddy/buddy_state.c"
+        "buddy/buddy_stats.c"
     INCLUDE_DIRS
         "."
         "display"
         "ui"
+        "ui/buddy"
         "comm"
         "input"
+        "buddy"
     PRIV_REQUIRES
         driver
         esp_lcd
@@ -29,4 +37,7 @@ idf_component_register(
         nvs_flash
         esp_netif
         littlefs
+        bt
+        nvs_flash
+        mbedtls
 )
