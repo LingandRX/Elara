@@ -26,6 +26,7 @@ void ble_init(const char *device_name);
 bool     ble_connected(void);
 bool     ble_secure(void);
 uint32_t ble_passkey(void);
+const char* ble_get_device_name(void);
 
 /* 绑定管理 */
 void ble_clear_bonds(void);

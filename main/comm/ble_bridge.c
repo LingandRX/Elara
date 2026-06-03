@@ -363,6 +363,7 @@ void ble_init(const char *device_name) {
 bool ble_connected(void) { return s_connected; }
 bool ble_secure(void)    { return s_secure; }
 uint32_t ble_passkey(void) { return s_passkey; }
+const char* ble_get_device_name(void) { return s_device_name; }
 
 void ble_clear_bonds(void) {
     int dev_num = esp_ble_get_bond_device_num();
