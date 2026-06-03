@@ -5,8 +5,6 @@
 #include "nvs_flash.h"
 #include "nvs.h"
 #include <string.h>
-#include "ui/lvgl_chat_ui.h"
-#include "display/lv_port_disp.h"
 
 static const char *TAG = "WIFI_MGR";
 static char s_current_ip[16] = "";
@@ -17,18 +15,10 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         ESP_LOGW(TAG, "Disconnected from Wi-Fi.");
         s_current_ip[0] = '\0';
-        if (lv_port_disp_lock(-1)) {
-            lvgl_chat_ui_set_wifi_status(false);
-            lv_port_disp_unlock();
-        }
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
         ESP_LOGI(TAG, "Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
         snprintf(s_current_ip, sizeof(s_current_ip), IPSTR, IP2STR(&event->ip_info.ip));
-        if (lv_port_disp_lock(-1)) {
-            lvgl_chat_ui_set_wifi_status(true);
-            lv_port_disp_unlock();
-        }
     }
 }
 

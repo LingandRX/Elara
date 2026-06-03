@@ -37,12 +37,14 @@ static void xack(const char *what, bool ok, uint32_t n) {
     ble_write((const uint8_t *)b, len);
 }
 
+__attribute__((unused))
 static uint32_t xwipe_dir(const char *dir) {
     /* 简化：仅删除文件，不递归删除子目录 */
     ESP_LOGW(TAG, "x wipe dir not fully implemented");
     return 0;
 }
 
+__attribute__((unused))
 static uint32_t xwipe_all_chars(void) {
     /* 简化实现 */
     ESP_LOGI(TAG, "Wiping all characters");

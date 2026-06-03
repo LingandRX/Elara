@@ -5,7 +5,6 @@ idf_component_register(
         "storage_manager.c"
         "display/lv_port_disp.c"
         "display/backlight_manager.c"
-        "ui/lvgl_chat_ui.c"
         "ui/lvgl_widgets.c"
         "ui/pet_anim.c"
         "ui/pet_ui.c"

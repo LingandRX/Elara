@@ -276,7 +276,14 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
     gatts_event_handler(event, gatts_if, param);
 }
 
+static bool s_ble_initialized = false;
+
 void ble_init(const char *device_name) {
+    if (s_ble_initialized) {
+        ESP_LOGW(TAG, "BLE already initialized, skipping");
+        return;
+    }
+
     if (device_name) {
         strncpy(s_device_name, device_name, sizeof(s_device_name) - 1);
         s_device_name[sizeof(s_device_name) - 1] = '\0';
@@ -285,7 +292,13 @@ void ble_init(const char *device_name) {
     /* NVS 已在 app_main 中初始化，此处不再重复 */
 
     /* 释放经典蓝牙内存，仅保留 BLE */
-    ESP_ERROR_CHECK(esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT));
+    esp_err_t ret = esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT);
+    if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
+        ESP_LOGE(TAG, "BT mem_release failed: %s", esp_err_to_name(ret));
+        return;
+    }
+
+    s_ble_initialized = true;
 
     /* 初始化 BLE 控制器 */
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();

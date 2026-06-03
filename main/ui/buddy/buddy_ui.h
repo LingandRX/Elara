@@ -60,6 +60,17 @@ typedef enum {
     BUDDY_SET_MAX
 } BuddySettingItem;
 
+/* ============ 外部状态同步回调 ============ */
+typedef void (*BuddyOverlayCloseCb)(void);
+
+/**
+ * 注册覆盖层点击外部时的关闭回调
+ * 用于同步 main.c 中的 BuddyUIState 状态
+ */
+void buddy_ui_set_overlay_close_cb(BuddyOverlayCloseCb menu_cb,
+                                    BuddyOverlayCloseCb settings_cb,
+                                    BuddyOverlayCloseCb approval_cb);
+
 /* ============ 初始化与显示 ============ */
 
 /**
