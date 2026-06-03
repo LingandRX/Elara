@@ -6,6 +6,7 @@
 
 #include "buddy_ui.h"
 #include "buddy_anim.h"
+#include "ble_bridge.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include <string.h>
@@ -417,7 +418,7 @@ static void update_info_content(void) {
             "A desktop companion\n"
             "for ESP32-S3\n\n"
             "Version: 1.0.0\n"
-            "LVGL: 8.4\n"
+            "LVGL: 9.1\n"
             "ESP-IDF: 5.5.4\n\n"
             "Made with love\n"
             "and caffeine.");
@@ -459,28 +460,30 @@ static void update_info_content(void) {
             "===========\n"
             "Chip: ESP32-S3\n"
             "CPU: 240MHz\n"
-            "Flash: 8MB\n"
-            "RAM: 512KB SRAM\n\n"
+            "Flash: 16MB\n"
+            "PSRAM: 8MB\n\n"
             "Display:\n"
             "  170x320 RGB565\n"
-            "  SH8601 Driver\n\n"
+            "  ST7789 Driver\n\n"
             "Touch: CST816T\n"
-            "I2C Addr: 0x15");
+            "I2C: 0x15\n"
+            "Battery: ADC GPIO4");
         break;
     }
     case INFO_PAGE_BT: {
-        lv_label_set_text(s_info_content,
+        lv_label_set_text_fmt(s_info_content,
             "Bluetooth\n"
             "=========\n"
-            "Status: Idle\n"
+            "Status: %s\n"
             "Mode: BLE\n"
-            "Name: Elara-Buddy\n\n"
-            "Pairing:\n"
-            "  Not connected\n\n"
-            "Services:\n"
-            "  HID (optional)\n"
-            "  UART (optional)\n\n"
-            "MAC: --:--:--");
+            "Name: %s\n\n"
+            "Service:\n"
+            "  Nordic UART\n"
+            "  (NUS)\n\n"
+            "Security:\n"
+            "  No pairing req.",
+            ble_connected() ? "Connected" : "Advertising",
+            ble_get_device_name());
         break;
     }
     case INFO_PAGE_CREDITS: {
