@@ -30,6 +30,7 @@ typedef enum {
     INFO_PAGE_CLAUDE,
     INFO_PAGE_DEVICE,
     INFO_PAGE_BT,
+    INFO_PAGE_BATTERY,
     INFO_PAGE_CREDITS,
     INFO_PAGE_MAX
 } InfoPageIdx;
