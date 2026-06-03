@@ -30,6 +30,7 @@
 #include "storage_manager.h"
 #include "buddy/buddy_state.h"
 #include "buddy/buddy_stats.h"
+#include "battery/battery_monitor.h"
 #include "nvs_flash.h"
 #include "lvgl.h"
 
@@ -293,7 +294,15 @@ static void buddy_main_loop(void) {
     }
     last_passkey = pk;
 
-    /* 11. 渲染更新 */
+    /* 11. 电池监测（每10秒更新一次） */
+    static uint32_t last_bat_update = 0;
+    if (now_ms - last_bat_update >= 10000) {
+        last_bat_update = now_ms;
+        battery_monitor_update();
+        buddy_ui_set_battery(battery_get_percentage(), battery_is_charging());
+    }
+
+    /* 12. 渲染更新 */
     if (!rt->napping && !rt->screen_off) {
         if (lv_port_disp_lock(50)) {
             /* 更新动画 */
@@ -626,12 +635,17 @@ void app_main(void) {
     /* 6. 初始化角色动画 */
     buddy_anim_init();
 
+    /* 6.5 初始化电池监测 */
+    battery_monitor_init();
+
     /* 7. 创建命令队列与通信 */
     cmdQueue = xQueueCreate(16, sizeof(UartCmd));
     uart_comm_init(&cmdQueue);
 
     /* 8. 启动 BLE */
     start_ble();
+    BuddySettings *set = buddy_settings_get();
+    buddy_ui_settings_set_toggle(BUDDY_SET_BT, set->bt);
 
     /* 10. 应用亮度（禁用 backlight_manager 的自动休眠，由 buddy_main_task 统一管理） */
     apply_brightness();

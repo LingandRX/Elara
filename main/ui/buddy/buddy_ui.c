@@ -44,6 +44,7 @@ static lv_obj_t *s_anim_canvas = NULL;
 static lv_obj_t *s_clock_label = NULL;
 static lv_obj_t *s_hud_panel = NULL;
 static lv_obj_t *s_hud_label = NULL;
+static lv_obj_t *s_battery_label = NULL;
 
 /* PET 模式 */
 static lv_obj_t *s_pet_page = NULL;
@@ -215,6 +216,13 @@ static void create_normal_page(void) {
     lv_obj_set_style_text_color(s_clock_label, COLOR_TEXT, 0);
     lv_obj_set_style_text_font(s_clock_label, LV_FONT_DEFAULT, 0);
     lv_obj_align(s_clock_label, LV_ALIGN_TOP_MID, 0, 4);
+
+    /* 电池标签（右上角） */
+    s_battery_label = lv_label_create(s_normal_page);
+    lv_label_set_text(s_battery_label, LV_SYMBOL_CHARGE " 100%");
+    lv_obj_set_style_text_color(s_battery_label, COLOR_TEXT, 0);
+    lv_obj_set_style_text_font(s_battery_label, LV_FONT_DEFAULT, 0);
+    lv_obj_align(s_battery_label, LV_ALIGN_TOP_RIGHT, -4, 4);
 
     /* HUD 面板 */
     s_hud_panel = lv_obj_create(s_normal_page);
@@ -1101,6 +1109,18 @@ void buddy_ui_show_ble_pairing(bool show) {
 
 bool buddy_ui_is_ble_pairing_visible(void) {
     return s_ble_visible;
+}
+
+/* ============ 电池状态 ============ */
+
+void buddy_ui_set_battery(int percentage, bool charging) {
+    if (!s_battery_label) return;
+    const char *symbol = charging ? LV_SYMBOL_CHARGE : LV_SYMBOL_BATTERY_FULL;
+    if (percentage < 20) symbol = charging ? LV_SYMBOL_CHARGE : LV_SYMBOL_BATTERY_EMPTY;
+    else if (percentage < 50) symbol = charging ? LV_SYMBOL_CHARGE : LV_SYMBOL_BATTERY_1;
+    else if (percentage < 75) symbol = charging ? LV_SYMBOL_CHARGE : LV_SYMBOL_BATTERY_2;
+    else if (percentage < 90) symbol = charging ? LV_SYMBOL_CHARGE : LV_SYMBOL_BATTERY_3;
+    lv_label_set_text_fmt(s_battery_label, "%s %d%%", symbol, percentage);
 }
 
 /* ============ 动画 tick ============ */
