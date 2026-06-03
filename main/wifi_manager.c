@@ -15,13 +15,12 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-        ESP_LOGI(TAG, "Disconnected from Wi-Fi. Retrying...");
+        ESP_LOGW(TAG, "Disconnected from Wi-Fi.");
         s_current_ip[0] = '\0';
         if (lv_port_disp_lock(-1)) {
             lvgl_chat_ui_set_wifi_status(false);
             lv_port_disp_unlock();
         }
-        esp_wifi_connect();
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
         ESP_LOGI(TAG, "Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
@@ -34,13 +33,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
 }
 
 void wifi_manager_init(void) {
-    ESP_LOGI(TAG, "Initializing NVS and Wi-Fi...");
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret);
+    ESP_LOGI(TAG, "Initializing Wi-Fi...");
 
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
@@ -60,25 +53,13 @@ void wifi_manager_init(void) {
         },
     };
 
-    /* Read saved Wi-Fi config from NVS */
-    nvs_handle_t nvs_handle;
-    esp_err_t err = nvs_open("wifi_cfg", NVS_READONLY, &nvs_handle);
-    bool has_config = false;
-    if (err == ESP_OK) {
-        size_t ssid_len = sizeof(wifi_config.sta.ssid);
-        size_t pass_len = sizeof(wifi_config.sta.password);
-        if (nvs_get_str(nvs_handle, "ssid", (char *)wifi_config.sta.ssid, &ssid_len) == ESP_OK &&
-            nvs_get_str(nvs_handle, "password", (char *)wifi_config.sta.password, &pass_len) == ESP_OK) {
-            has_config = true;
-            ESP_LOGI(TAG, "Loaded saved Wi-Fi config. SSID: %s", wifi_config.sta.ssid);
-        }
-        nvs_close(nvs_handle);
-    }
+    /* 硬编码 Wi-Fi 凭据 */
+    strncpy((char *)wifi_config.sta.ssid, "ZTE-6AkyCN", sizeof(wifi_config.sta.ssid));
+    strncpy((char *)wifi_config.sta.password, "07200329", sizeof(wifi_config.sta.password));
+    ESP_LOGI(TAG, "Using hardcoded Wi-Fi config. SSID: %s", wifi_config.sta.ssid);
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    if (has_config) {
-        ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
-    }
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
 }
 

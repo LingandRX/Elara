@@ -39,6 +39,9 @@ void comm_write_upload_byte(uint8_t c);
 bool comm_is_uploading(void);
 size_t comm_write_upload_data(const uint8_t *data, size_t len);
 
+// 发送原始数据到上位机
+void uart_send_raw(const char *data, size_t len);
+
 // 发送事件到上位机
 void uart_send_event(const char *source, const char *action);
 void uart_send_error(const char *msg);

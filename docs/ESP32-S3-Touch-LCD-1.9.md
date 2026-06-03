@@ -132,18 +132,16 @@ CST816T 是一款电容式触摸控制芯片，支持 I2C 通信，可检测单�
 
 本项目使用 ESP-IDF 框架开发，相关驱动代码位于:
 
-- `main/display/sh8601.c` - LCD 驱动 (当前使用 SH8601 命令集，需适配 ST7789V2)
+- `main/display/` - LCD 驱动 (ST7789V2)
 - `main/ui/lvgl_chat_ui.c` - LVGL 聊天界面 UI
 - `components/i2c_bsp/` - I2C 主机驱动
 - `components/esp_touch/` - 触摸控制器驱动
 
-### 驱动适配说明
+### 驱动配置说明
 
-当前代码基于 SH8601 驱动芯片，如需适配 ST7789V2:
-
-1. 修改 `main/display/sh8601.c` 中的初始化命令序列
-2. 调整像素格式和分辨率配置
-3. 更新背光控制逻辑
+1. LCD 初始化命令序列需适配 ST7789V2 芯片
+2. 像素格式为 RGB565，分辨率 170×320
+3. 背光控制通过 GPIO14 使用 PWM 调节
 
 ## 参考资料
 
