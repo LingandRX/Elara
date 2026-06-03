@@ -258,7 +258,10 @@ static void buddy_main_loop(void) {
         was_clocking = clocking;
     }
 
-    /* 9. 时钟模式下的时间心情 */
+    /* 9. 更新时钟显示 */
+    update_clock();
+
+    /* 10. 时钟模式下的时间心情 */
     if (clocking && (int32_t)(now_ms - rt->oneshot_until_ms) >= 0) {
         if ((int32_t)(now_ms - rt->playful_until_ms) < 0) {
             /*  playful 模式 */
