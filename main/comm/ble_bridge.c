@@ -89,7 +89,7 @@ static const esp_gatts_attr_db_t nus_gatt_db[NUS_IDX_NB] = {
     [NUS_IDX_RX_VAL] = {
         {ESP_GATT_AUTO_RSP},
         {ESP_UUID_LEN_128, (uint8_t *)NUS_RX_UUID_128,
-         ESP_GATT_PERM_WRITE_ENCRYPTED, 512, 0, NULL}
+         ESP_GATT_PERM_WRITE, 512, 0, NULL}
     },
 
     /* TX Characteristic Declaration */
@@ -103,14 +103,14 @@ static const esp_gatts_attr_db_t nus_gatt_db[NUS_IDX_NB] = {
     [NUS_IDX_TX_VAL] = {
         {ESP_GATT_AUTO_RSP},
         {ESP_UUID_LEN_128, (uint8_t *)NUS_TX_UUID_128,
-         ESP_GATT_PERM_READ_ENCRYPTED, 512, 0, NULL}
+         ESP_GATT_PERM_READ, 512, 0, NULL}
     },
 
     /* TX Client Characteristic Configuration Descriptor */
     [NUS_IDX_TX_CFG] = {
         {ESP_GATT_AUTO_RSP},
         {ESP_UUID_LEN_16, (uint8_t *)&character_client_config_uuid,
-         ESP_GATT_PERM_READ_ENCRYPTED | ESP_GATT_PERM_WRITE_ENCRYPTED,
+         ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE,
          sizeof(uint16_t), sizeof(char_cccd_notify), (uint8_t *)&char_cccd_notify}
     },
 };
@@ -154,6 +154,10 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
         ESP_LOGI(TAG, "Numeric comparison request: %lu", (unsigned long)param->ble_security.key_notif.passkey);
         esp_ble_confirm_reply(param->ble_security.key_notif.bd_addr, true);
         break;
+    case ESP_GAP_BLE_SEC_REQ_EVT:
+        /* 收到安全请求，直接接受（因为已禁用配对，不会实际要求认证） */
+        esp_ble_gap_security_rsp(param->ble_security.ble_req.bd_addr, true);
+        break;
     default:
         break;
     }
@@ -179,11 +183,11 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
             /* 清除所有已有的广播集 */
             esp_ble_gap_ext_adv_set_clear();
 
-            /* 1. 先配置扩展广播参数（必须在设置数据之前） */
+            /* 1. 配置扩展广播参数 */
             esp_ble_gap_ext_adv_params_t ext_adv_params = {
                 .type         = ESP_BLE_GAP_SET_EXT_ADV_PROP_LEGACY_IND,
-                .interval_min = 0x0020,
-                .interval_max = 0x0040,
+                .interval_min = 0x0030,
+                .interval_max = 0x0060,
                 .channel_map  = ADV_CHNL_ALL,
                 .own_addr_type  = BLE_ADDR_TYPE_PUBLIC,
                 .peer_addr_type = BLE_ADDR_TYPE_PUBLIC,
@@ -195,18 +199,29 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
             };
             esp_ble_gap_ext_adv_set_params(0, &ext_adv_params);
 
-            /* 2. 构建广播数据（Flags + 128-bit 服务 UUID） */
-            uint8_t adv_raw[31];
+            /* 2. 广播数据：Flags + 设备名称 + 128-bit Service UUID */
+            uint8_t adv_raw[31] = {0};
             size_t  adv_len = 0;
             /* Flags */
-            adv_raw[adv_len++] = 0x02;  /* Length */
-            adv_raw[adv_len++] = 0x01;  /* Type: Flags */
-            adv_raw[adv_len++] = 0x06;  /* General Discr + BR/EDR Not Supported */
+            adv_raw[adv_len++] = 0x02;
+            adv_raw[adv_len++] = 0x01;
+            adv_raw[adv_len++] = 0x06;
+            /* 设备名称（截断到适合长度） */
+            size_t name_len = strlen(s_device_name);
+            if (adv_len + 2 + name_len > 31) {
+                name_len = 31 - adv_len - 2;
+            }
+            adv_raw[adv_len++] = (uint8_t)(name_len + 1);
+            adv_raw[adv_len++] = 0x09;  /* Complete Local Name */
+            memcpy(&adv_raw[adv_len], s_device_name, name_len);
+            adv_len += name_len;
             /* 128-bit Service UUID */
-            adv_raw[adv_len++] = 17;    /* Length = 1 + 16 */
-            adv_raw[adv_len++] = 0x07;  /* Type: Complete List of 128-bit Service UUIDs */
-            memcpy(&adv_raw[adv_len], NUS_SERVICE_UUID_128, 16);
-            adv_len += 16;
+            if (adv_len + 18 <= 31) {
+                adv_raw[adv_len++] = 17;
+                adv_raw[adv_len++] = 0x07;
+                memcpy(&adv_raw[adv_len], NUS_SERVICE_UUID_128, 16);
+                adv_len += 16;
+            }
 
             /* 3. 设置广播数据 */
             esp_ble_gap_config_ext_adv_data_raw(0, (uint16_t)adv_len, adv_raw);
@@ -214,8 +229,8 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
             /* 启动广播 */
             esp_ble_gap_ext_adv_t ext_adv = {
                 .instance   = 0,
-                .duration   = 0,    /* 无限持续 */
-                .max_events = 0,    /* 无限制 */
+                .duration   = 0,
+                .max_events = 0,
             };
             esp_ble_gap_ext_adv_start(1, &ext_adv);
         }
@@ -280,7 +295,14 @@ static bool s_ble_initialized = false;
 
 void ble_init(const char *device_name) {
     if (s_ble_initialized) {
-        ESP_LOGW(TAG, "BLE already initialized, skipping");
+        ESP_LOGW(TAG, "BLE already initialized, restart advertising");
+        /* 已初始化过，仅重启广播 */
+        esp_ble_gap_ext_adv_t ext_adv = {
+            .instance   = 0,
+            .duration   = 0,
+            .max_events = 0,
+        };
+        esp_ble_gap_ext_adv_start(1, &ext_adv);
         return;
     }
 
@@ -309,6 +331,9 @@ void ble_init(const char *device_name) {
     ESP_ERROR_CHECK(esp_bluedroid_init());
     ESP_ERROR_CHECK(esp_bluedroid_enable());
 
+    /* 清除旧的绑定信息（避免手机因旧密钥无法重新配对） */
+    ble_clear_bonds();
+
     /* 注册 GAP/GATT 回调 */
     ESP_ERROR_CHECK(esp_ble_gap_register_callback(gap_event_handler));
     ESP_ERROR_CHECK(esp_ble_gatts_register_callback(gatts_profile_event_handler));
@@ -316,9 +341,9 @@ void ble_init(const char *device_name) {
     /* 注册 GATT 应用 */
     ESP_ERROR_CHECK(esp_ble_gatts_app_register(NUS_APP_ID));
 
-    /* 配置安全 */
-    esp_ble_auth_req_t auth_req = ESP_LE_AUTH_REQ_SC_MITM_BOND;
-    esp_ble_io_cap_t iocap = ESP_IO_CAP_OUT;
+    /* 配置安全（禁用配对/绑定，手机可直接连接） */
+    esp_ble_auth_req_t auth_req = ESP_LE_AUTH_NO_BOND;
+    esp_ble_io_cap_t iocap = ESP_IO_CAP_NONE;
     uint8_t key_size = 16;
     uint8_t init_key = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;
     uint8_t rsp_key = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;

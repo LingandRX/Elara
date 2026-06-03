@@ -272,6 +272,15 @@ void buddy_ui_show_ble_pairing(bool show);
  */
 bool buddy_ui_is_ble_pairing_visible(void);
 
+/* ============ 电池状态 ============ */
+
+/**
+ * 设置电池状态显示
+ * @param percentage 电量百分比 (0-100)
+ * @param charging   是否充电中
+ */
+void buddy_ui_set_battery(int percentage, bool charging);
+
 /* ============ 动画 tick ============ */
 
 /**

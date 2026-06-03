@@ -119,6 +119,12 @@ void buddy_settings_init(void) {
 
     err = nvs_get_u8(s_nvs_handle, "s_bt", &val8);
     s_settings.bt = (err == ESP_OK) ? val8 : true;
+    /* 蓝牙默认开启：若之前保存为关闭，强制重置为开启 */
+    if (!s_settings.bt) {
+        s_settings.bt = true;
+        nvs_set_u8(s_nvs_handle, "s_bt", 1);
+        nvs_commit(s_nvs_handle);
+    }
 
     err = nvs_get_u8(s_nvs_handle, "s_wifi", &val8);
     s_settings.wifi = (err == ESP_OK) ? val8 : false;

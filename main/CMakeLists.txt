@@ -11,9 +11,9 @@ idf_component_register(
         "ui/buddy/buddy_ui.c"
         "ui/buddy/buddy_anim.c"
         "comm/uart_comm.c"
-        "comm/tcp_server.c"
         "comm/ble_bridge.c"
         "comm/xfer.c"
+        "battery/battery_monitor.c"
         "input/lvgl_touch.c"
         "buddy/buddy_state.c"
         "buddy/buddy_stats.c"
@@ -25,6 +25,7 @@ idf_component_register(
         "comm"
         "input"
         "buddy"
+        "battery"
     PRIV_REQUIRES
         driver
         esp_lcd
@@ -39,4 +40,5 @@ idf_component_register(
         bt
         nvs_flash
         mbedtls
+        esp_adc
 )
