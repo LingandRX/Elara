@@ -165,6 +165,7 @@ static const char *s_info_titles[INFO_PAGE_MAX] = {
     "Claude",
     "Device",
     "Bluetooth",
+    "Battery",
     "Credits",
 };
 
@@ -486,6 +487,25 @@ static void update_info_content(void) {
             ble_get_device_name());
         break;
     }
+    case INFO_PAGE_BATTERY: {
+        extern uint32_t battery_get_voltage_mv(void);
+        extern uint8_t battery_get_percentage(void);
+        extern bool battery_is_charging(void);
+        lv_label_set_text_fmt(s_info_content,
+            "Battery\n"
+            "=======\n"
+            "Status: %s\n"
+            "Voltage: %lu mV\n"
+            "Level: %d%%\n\n"
+            "Health:\n"
+            "  Good\n\n"
+            "Type:\n"
+            "  Li-Po 3.7V",
+            battery_is_charging() ? "Charging" : "Discharging",
+            (unsigned long)battery_get_voltage_mv(),
+            battery_get_percentage());
+        break;
+    }
     case INFO_PAGE_CREDITS: {
         lv_label_set_text(s_info_content,
             "Credits\n"
@@ -493,11 +513,10 @@ static void update_info_content(void) {
             "Design: claude-desktop-buddy\n"
             "Port: Elara Team\n\n"
             "Libraries:\n"
-            "  LVGL 8.4\n"
-            "  esp_lcd_sh8601\n"
+            "  LVGL 9.1\n"
+            "  esp_lcd_st7789\n"
             "  FreeRTOS\n\n"
             "Hardware:\n"
-            "  Waveshare\n"
             "  ESP32-S3-Touch\n\n"
             "Thank you!");
         break;
