@@ -14,7 +14,7 @@
 static const char *TAG = "BUDDY_UI";
 
 /* ============ 颜色定义 ============ */
-#define COLOR_BG       lv_color_hex(0xFF0000)  /* 红色背景，调试用 */
+#define COLOR_BG       lv_color_hex(0x0A0A1A)  /* 深蓝黑背景 */
 #define COLOR_PANEL    lv_color_hex(0x2104)
 #define COLOR_HOT      lv_color_hex(0xFA20)
 #define COLOR_GREEN    lv_color_hex(0x07E0)
