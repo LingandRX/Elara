@@ -14,7 +14,7 @@
 static const char *TAG = "BUDDY_UI";
 
 /* ============ 颜色定义 ============ */
-#define COLOR_BG       lv_color_hex(0x080810)
+#define COLOR_BG       lv_color_hex(0xFF0000)  /* 红色背景，调试用 */
 #define COLOR_PANEL    lv_color_hex(0x2104)
 #define COLOR_HOT      lv_color_hex(0xFA20)
 #define COLOR_GREEN    lv_color_hex(0x07E0)
@@ -123,6 +123,14 @@ static bool s_set_led = true;
 static bool s_set_hud = true;
 static bool s_set_rotate = false;
 static bool s_set_ascii = false;
+
+/* 外部关闭回调 */
+static BuddyOverlayCloseCb s_menu_close_cb = NULL;
+static BuddyOverlayCloseCb s_settings_close_cb = NULL;
+static BuddyOverlayCloseCb s_approval_close_cb = NULL;
+
+/* 前向声明 */
+static void info_gesture_cb(lv_event_t *e);
 
 /* ============ 菜单文本 ============ */
 static const char *s_menu_texts[BUDDY_MENU_MAX] = {
@@ -349,6 +357,8 @@ static void create_info_page(void) {
     lv_obj_align(s_info_page, LV_ALIGN_TOP_LEFT, 0, 0);
     lv_obj_clear_flag(s_info_page, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(s_info_page, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_info_page, LV_OBJ_FLAG_GESTURE_BUBBLE);
+    lv_obj_add_event_cb(s_info_page, info_gesture_cb, LV_EVENT_GESTURE, NULL);
 
     /* 标题栏 */
     lv_obj_t *title_bar = lv_obj_create(s_info_page);
@@ -487,6 +497,41 @@ static void update_info_content(void) {
     }
 }
 
+/* ============ 覆盖层外部点击关闭 ============ */
+
+static void overlay_click_close_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_CLICKED) return;
+    lv_obj_t *target = lv_event_get_target(e);
+    lv_obj_t *overlay = (lv_obj_t *)lv_event_get_user_data(e);
+    if (target == overlay) {
+        /* 点击了 overlay 背景（panel 外部） */
+        if (overlay == s_menu_overlay && s_menu_close_cb) {
+            buddy_ui_show_menu(false);
+            s_menu_close_cb();
+        } else if (overlay == s_settings_overlay && s_settings_close_cb) {
+            buddy_ui_show_settings(false);
+            s_settings_close_cb();
+        } else if (overlay == s_approval_overlay && s_approval_close_cb) {
+            buddy_ui_hide_approval();
+            s_approval_close_cb();
+        }
+    }
+}
+
+/* ============ INFO 页面滑动手势 ============ */
+
+static void info_gesture_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_GESTURE) return;
+    lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_get_act());
+    if (dir == LV_DIR_RIGHT) {
+        buddy_ui_info_prev();
+    } else if (dir == LV_DIR_LEFT) {
+        buddy_ui_info_next();
+    }
+}
+
 /* ============ 菜单覆盖层创建 ============ */
 
 static void menu_event_cb(lv_event_t *e) {
@@ -517,6 +562,8 @@ static void create_menu_overlay(void) {
     lv_obj_align(s_menu_overlay, LV_ALIGN_TOP_LEFT, 0, 0);
     lv_obj_clear_flag(s_menu_overlay, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(s_menu_overlay, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_menu_overlay, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_menu_overlay, overlay_click_close_cb, LV_EVENT_CLICKED, s_menu_overlay);
 
     /* 面板 */
     s_menu_panel = lv_obj_create(s_menu_overlay);
@@ -588,6 +635,8 @@ static void create_settings_overlay(void) {
     lv_obj_align(s_settings_overlay, LV_ALIGN_TOP_LEFT, 0, 0);
     lv_obj_clear_flag(s_settings_overlay, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(s_settings_overlay, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_settings_overlay, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_settings_overlay, overlay_click_close_cb, LV_EVENT_CLICKED, s_settings_overlay);
 
     s_settings_panel = lv_obj_create(s_settings_overlay);
     lv_obj_set_size(s_settings_panel, 154, 260);
@@ -671,6 +720,8 @@ static void create_approval_overlay(void) {
     lv_obj_align(s_approval_overlay, LV_ALIGN_TOP_LEFT, 0, 0);
     lv_obj_clear_flag(s_approval_overlay, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(s_approval_overlay, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_approval_overlay, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_approval_overlay, overlay_click_close_cb, LV_EVENT_CLICKED, s_approval_overlay);
 
     s_approval_panel = lv_obj_create(s_approval_overlay);
     lv_obj_set_size(s_approval_panel, 156, 200);
@@ -777,6 +828,16 @@ static void create_ble_overlay(void) {
     lv_obj_align(s_ble_hint, LV_ALIGN_BOTTOM_MID, 0, -4);
 }
 
+/* ============ 回调注册 ============ */
+
+void buddy_ui_set_overlay_close_cb(BuddyOverlayCloseCb menu_cb,
+                                    BuddyOverlayCloseCb settings_cb,
+                                    BuddyOverlayCloseCb approval_cb) {
+    s_menu_close_cb = menu_cb;
+    s_settings_close_cb = settings_cb;
+    s_approval_close_cb = approval_cb;
+}
+
 /* ============ 初始化 ============ */
 
 void buddy_ui_init(void) {
@@ -813,10 +874,14 @@ void buddy_ui_init(void) {
 }
 
 void buddy_ui_show(bool show) {
+    ESP_LOGI(TAG, "buddy_ui_show: show=%d, container=%p", show, s_container);
     s_ui_visible = show;
     obj_set_hidden(s_container, !show);
     if (show) {
         lv_obj_move_foreground(s_container);
+        ESP_LOGI(TAG, "Buddy UI shown, parent=%p, hidden=%d", 
+                 s_container ? lv_obj_get_parent(s_container) : NULL,
+                 s_container ? lv_obj_has_flag(s_container, LV_OBJ_FLAG_HIDDEN) : -1);
     }
 }
 

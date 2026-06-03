@@ -36,7 +36,7 @@ int    ble_read(void);
 size_t ble_write(const uint8_t *data, size_t len);
 
 /* 接收缓冲区大小 */
-#define BLE_RX_BUF_SIZE 2048
+#define BLE_RX_BUF_SIZE 512
 
 #ifdef __cplusplus
 }

@@ -12,6 +12,7 @@
 #include "esp_system.h"
 #include "esp_mac.h"
 #include "esp_timer.h"
+#include "esp_sleep.h"
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
 #include "esp_lcd_panel_io.h"
@@ -26,8 +27,6 @@
 #include "ui/buddy/buddy_anim.h"
 #include "comm/uart_comm.h"
 #include "comm/ble_bridge.h"
-#include "comm/tcp_server.h"
-#include "wifi_manager.h"
 #include "storage_manager.h"
 #include "buddy/buddy_state.h"
 #include "buddy/buddy_stats.h"
@@ -45,6 +44,7 @@ static QueueHandle_t cmdQueue;
 /* 运行状态 */
 static uint32_t s_tick = 0;
 static char s_bt_name[24] = "Claude";
+static uint32_t s_welcome_until_ms = 0;
 
 /* 常量 */
 #define PLAYFUL_MS          (3UL * 60UL * 1000UL)
@@ -109,8 +109,8 @@ static void apply_brightness(void) {
     BuddyUIState *ui = buddy_get_ui_state();
     uint8_t lvl = ui->bright_level;
     /* 0..4 → 亮度映射 */
-    uint8_t brightness = (lvl * 51);  /* 0, 51, 102, 153, 204 */
-    if (brightness > 200) brightness = 200;
+    uint8_t brightness = (lvl * 45);  /* 0, 45, 90, 135, 180 (~70% max) */
+    if (brightness > 179) brightness = 179;
     backlight_set_brightness(brightness);
 }
 
@@ -119,7 +119,6 @@ static void wake(void) {
     BuddyRuntime *rt = buddy_get_runtime();
     rt->last_interact_ms = esp_timer_get_time() / 1000;
     if (rt->screen_off) {
-        backlight_set_on(true);
         rt->screen_off = false;
         rt->wake_transition_until_ms = rt->last_interact_ms + 12000;
     }
@@ -177,285 +176,415 @@ static void cmd_process_task(void *pvParam) {
     }
 }
 
-/* 主循环任务 - 核心状态机 */
-static void buddy_main_task(void *pvParam) {
-    (void)pvParam;
+/* 前向声明（定义在下方） */
+static void process_boot_key(void);
+static void process_ble_poll(void);
 
+/* 主循环 - 核心状态机（直接内联到 app_main，不创建独立任务） */
+static void buddy_main_loop(void) {
     BuddyRuntime *rt = buddy_get_runtime();
     BuddyUIState *ui = buddy_get_ui_state();
     ClaudeState *claude = buddy_get_claude_state();
 
-    uint32_t last_passkey = 0;
+    static uint32_t last_passkey = 0;
     static bool was_clocking = false;
 
-    while (1) {
-        s_tick++;
-        uint32_t now_ms = esp_timer_get_time() / 1000;
+    s_tick++;
+    uint32_t now_ms = esp_timer_get_time() / 1000;
 
-        /* 1. 轮询数据 */
-        buddy_data_poll(claude);
+    /* 1. 轮询数据 */
+    buddy_data_poll(claude);
 
-        /* 2. 检查升级 */
-        if (buddy_stats_poll_level_up()) {
-            buddy_trigger_oneshot(PERSONA_CELEBRATE, 3000);
-        }
+    /* 2. 检查升级 */
+    if (buddy_stats_poll_level_up()) {
+        buddy_trigger_oneshot(PERSONA_CELEBRATE, 3000);
+    }
 
-        /* 3. 推导基础状态 */
-        rt->base_state = buddy_derive_state(claude);
+    /* 3. 推导基础状态 */
+    rt->base_state = buddy_derive_state(claude);
 
-        /* 4. 唤醒过渡保护 */
-        if (rt->base_state == PERSONA_IDLE &&
-            (int32_t)(now_ms - rt->wake_transition_until_ms) < 0) {
-            /* 保持 idle */
-        }
+    /* 4. 唤醒过渡保护 */
+    if (rt->base_state == PERSONA_IDLE &&
+        (int32_t)(now_ms - rt->wake_transition_until_ms) < 0) {
+        /* 保持 idle */
+    }
 
-        /* 5. One-shot 超时 */
-        if ((int32_t)(now_ms - rt->oneshot_until_ms) >= 0) {
-            rt->active_state = rt->base_state;
-        }
+    /* 5. One-shot 超时 */
+    if ((int32_t)(now_ms - rt->oneshot_until_ms) >= 0) {
+        rt->active_state = rt->base_state;
+    }
 
-        /* 6. 新审批提示到达 */
-        if (strcmp(claude->prompt_id, rt->last_prompt_id) != 0) {
-            strncpy(rt->last_prompt_id, claude->prompt_id, sizeof(rt->last_prompt_id) - 1);
-            rt->last_prompt_id[sizeof(rt->last_prompt_id) - 1] = '\0';
-            rt->response_sent = false;
-            if (claude->prompt_id[0]) {
-                rt->prompt_arrived_ms = now_ms;
-                wake();
-                beep(1200, 80);
-                ui->display_mode = DISP_NORMAL;
-                ui->menu_open = false;
-                ui->settings_open = false;
-                ui->reset_open = false;
-                buddy_ui_hide_approval();
-                buddy_ui_show_approval(claude->prompt_tool, claude->prompt_hint);
-                buddy_anim_invalidate();
-            } else {
-                buddy_ui_hide_approval();
-            }
-        }
-
-        bool in_prompt = buddy_has_pending_prompt();
-
-        /* 7. 处理触摸输入 */
-        /* 触摸处理由 lvgl_touch 在 lv_task_handler 中处理 */
-        /* 这里处理高级手势逻辑 */
-
-        /* 8. 时钟模式 */
-        update_clock();
-        bool clocking = (ui->display_mode == DISP_NORMAL) &&
-                        !ui->menu_open && !ui->settings_open && !ui->reset_open &&
-                        !in_prompt &&
-                        claude->sessions_running == 0 && claude->sessions_waiting == 0 &&
-                        buddy_rtc_valid();
-
-        if (clocking != was_clocking) {
-            if (clocking) {
-                buddy_anim_set_peek(true);
-            } else {
-                buddy_anim_set_peek(false);
-            }
-            buddy_anim_invalidate();
-            was_clocking = clocking;
-        }
-
-        /* 9. 时钟模式下的时间心情 */
-        if (clocking && (int32_t)(now_ms - rt->oneshot_until_ms) >= 0) {
-            if ((int32_t)(now_ms - rt->playful_until_ms) < 0) {
-                /*  playful 模式 */
-                static const PersonaState PLAYFUL[] = {
-                    PERSONA_IDLE, PERSONA_IDLE, PERSONA_HEART,
-                    PERSONA_IDLE, PERSONA_CELEBRATE, PERSONA_IDLE
-                };
-                rt->active_state = PLAYFUL[(now_ms / 5000) % 6];
-            } else {
-                /* 时间节律 */
-                int h = 0;
-                buddy_get_local_time(&h, NULL, NULL, NULL, NULL, NULL, NULL);
-                if (h < 7 || h >= 22) {
-                    rt->active_state = (now_ms / 15000 % 8 == 0) ? PERSONA_IDLE : PERSONA_SLEEP;
-                } else {
-                    rt->active_state = (now_ms / 12000 % 6 == 0) ? PERSONA_SLEEP : PERSONA_IDLE;
-                }
-            }
-        }
-
-        /* 10. BLE 配对码 */
-        uint32_t pk = ble_passkey();
-        if (pk && !last_passkey) {
+    /* 6. 新审批提示到达 */
+    if (strcmp(claude->prompt_id, rt->last_prompt_id) != 0) {
+        strncpy(rt->last_prompt_id, claude->prompt_id, sizeof(rt->last_prompt_id) - 1);
+        rt->last_prompt_id[sizeof(rt->last_prompt_id) - 1] = '\0';
+        rt->response_sent = false;
+        if (claude->prompt_id[0]) {
+            rt->prompt_arrived_ms = now_ms;
             wake();
-            beep(1800, 60);
-            char code[16];
-            snprintf(code, sizeof(code), "%06lu", (unsigned long)pk);
-            buddy_ui_set_ble_pairing_code(code);
-            buddy_ui_show_ble_pairing(true);
+            beep(1200, 80);
+            ui->display_mode = DISP_NORMAL;
+            ui->menu_open = false;
+            ui->settings_open = false;
+            ui->reset_open = false;
+            buddy_ui_hide_approval();
+            buddy_ui_show_approval(claude->prompt_tool, claude->prompt_hint);
+        } else if (!rt->response_sent) {
+            /* 审批被撤销 */
+            buddy_ui_hide_approval();
         }
-        if (!pk && last_passkey) {
-            buddy_ui_show_ble_pairing(false);
+    }
+
+    /* 7. 处理审批计时 */
+    bool in_prompt = claude->prompt_id[0] && !rt->response_sent;
+    if (in_prompt && !buddy_ui_is_approval_visible()) {
+        /* 确保审批界面显示 */
+        buddy_ui_show_approval(claude->prompt_tool, claude->prompt_hint);
+    }
+
+    /* 8. 推导 clocking 状态 */
+    bool clocking = claude->connected &&
+                    claude->sessions_running == 0 && claude->sessions_waiting == 0 &&
+                    buddy_rtc_valid();
+
+    if (clocking != was_clocking) {
+        if (clocking) {
+            buddy_anim_set_peek(true);
+        } else {
+            buddy_anim_set_peek(false);
         }
-        last_passkey = pk;
+        buddy_anim_invalidate();
+        was_clocking = clocking;
+    }
 
-        /* 11. 渲染更新 */
-        if (!rt->napping && !rt->screen_off) {
-            if (lv_port_disp_lock(50)) {
-                /* 更新动画 */
-                buddy_anim_tick(rt->active_state, s_tick);
-                buddy_ui_anim_tick(s_tick);
+    /* 9. 时钟模式下的时间心情 */
+    if (clocking && (int32_t)(now_ms - rt->oneshot_until_ms) >= 0) {
+        if ((int32_t)(now_ms - rt->playful_until_ms) < 0) {
+            /*  playful 模式 */
+            static const PersonaState PLAYFUL[] = {
+                PERSONA_IDLE, PERSONA_IDLE, PERSONA_HEART,
+                PERSONA_IDLE, PERSONA_CELEBRATE, PERSONA_IDLE
+            };
+            rt->active_state = PLAYFUL[(now_ms / 5000) % 6];
+        } else {
+            /* 时间节律 */
+            int h = 0;
+            buddy_get_local_time(&h, NULL, NULL, NULL, NULL, NULL, NULL);
+            if (h < 7 || h >= 22) {
+                rt->active_state = (now_ms / 15000 % 8 == 0) ? PERSONA_IDLE : PERSONA_SLEEP;
+            } else {
+                rt->active_state = (now_ms / 12000 % 6 == 0) ? PERSONA_SLEEP : PERSONA_IDLE;
+            }
+        }
+    }
 
-                /* 更新 HUD */
+    /* 10. BLE 配对码 */
+    uint32_t pk = ble_passkey();
+    if (pk && !last_passkey) {
+        wake();
+        beep(1800, 60);
+        char code[16];
+        snprintf(code, sizeof(code), "%06lu", (unsigned long)pk);
+        buddy_ui_set_ble_pairing_code(code);
+        buddy_ui_show_ble_pairing(true);
+    }
+    if (!pk && last_passkey) {
+        buddy_ui_show_ble_pairing(false);
+    }
+    last_passkey = pk;
+
+    /* 11. 渲染更新 */
+    if (!rt->napping && !rt->screen_off) {
+        if (lv_port_disp_lock(50)) {
+            /* 更新动画 */
+            buddy_anim_tick(rt->active_state, s_tick);
+            buddy_ui_anim_tick(s_tick);
+
+            /* 更新 HUD（欢迎消息期间不覆盖） */
+            if ((int32_t)(now_ms - s_welcome_until_ms) >= 0) {
                 if (claude->n_lines > 0) {
                     buddy_ui_set_hud_text(claude->lines[claude->n_lines - 1]);
                 } else {
                     buddy_ui_set_hud_text(claude->msg);
                 }
-
-                /* 更新宠物统计 */
-                BuddyStats *stats = buddy_stats_get();
-                buddy_ui_set_pet_stats(
-                    buddy_stats_mood_tier() * 25,
-                    buddy_stats_fed_progress() * 10,
-                    buddy_stats_energy_tier() * 20,
-                    stats->level
-                );
-
-                lv_port_disp_unlock();
             }
-        }
 
-        /* 12. 自动休眠（简化：无 IMU，仅基于超时） */
-        if (!rt->screen_off && !in_prompt) {
-            uint32_t idle_ms = now_ms - rt->last_interact_ms;
-            uint32_t threshold = clocking ? CLOCK_OFF_MS_BAT : SCREEN_OFF_MS;
-            if (idle_ms > threshold) {
-                backlight_set_on(false);
-                rt->screen_off = true;
-            }
-        }
+            /* 更新宠物统计 */
+            BuddyStats *stats = buddy_stats_get();
+            buddy_ui_set_pet_stats(
+                buddy_stats_mood_tier() * 25,
+                buddy_stats_fed_progress() * 10,
+                buddy_stats_energy_tier() * 20,
+                stats->level
+            );
 
-        /* 13. LTPO-lite 动态帧率 */
-        uint32_t loop_ms;
-        if (rt->screen_off) {
-            loop_ms = 200;
-        } else if (rt->napping || in_prompt || ui->menu_open ||
-                   ui->settings_open || ui->reset_open ||
-                   (int32_t)(now_ms - rt->oneshot_until_ms) < 0 || pk) {
-            loop_ms = 16;
-        } else {
-            loop_ms = 100;
+            lv_port_disp_unlock();
         }
-
-        vTaskDelay(pdMS_TO_TICKS(loop_ms));
     }
+
+    /* 12. 自动休眠（简化：无 IMU，仅基于超时） */
+    if (!rt->screen_off && !in_prompt) {
+        uint32_t idle_ms = now_ms - rt->last_interact_ms;
+        uint32_t threshold = clocking ? CLOCK_OFF_MS_BAT : SCREEN_OFF_MS;
+        if (idle_ms > threshold) {
+            backlight_set_on(false);
+            rt->screen_off = true;
+        }
+    }
+
+    /* 13. LTPO-lite 动态帧率 */
+    uint32_t loop_ms;
+    if (rt->screen_off) {
+        loop_ms = 200;
+    } else if (rt->napping || in_prompt || ui->menu_open ||
+               ui->settings_open || ui->reset_open ||
+               (int32_t)(now_ms - rt->oneshot_until_ms) < 0 || pk) {
+        loop_ms = 16;
+    } else {
+        loop_ms = 100;
+    }
+
+    /* 在主循环中处理 BOOT 键和 BLE 轮询，减少任务数量 */
+    process_boot_key();
+    process_ble_poll();
+
+    vTaskDelay(pdMS_TO_TICKS(loop_ms));
 }
 
-/* BOOT 键处理任务 */
-static void boot_key_task(void *pvParam) {
-    (void)pvParam;
 
-    gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << BOOT_KEY_PIN),
-        .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE,
-    };
-    gpio_config(&io_conf);
 
+/* BOOT 键状态 */
+static uint8_t bk_last_level = 1;
+static uint32_t bk_press_start_ms = 0;
+
+static void process_boot_key(void) {
     BuddyUIState *ui = buddy_get_ui_state();
     BuddyRuntime *rt = buddy_get_runtime();
-    uint8_t last_level = 1;
-    uint32_t press_start_ms = 0;
+    uint8_t level = gpio_get_level(BOOT_KEY_PIN);
+    uint32_t now_ms = esp_timer_get_time() / 1000;
 
-    while (1) {
-        uint8_t level = gpio_get_level(BOOT_KEY_PIN);
-        uint32_t now_ms = esp_timer_get_time() / 1000;
+    if (bk_last_level == 1 && level == 0) {
+        /* 按下 */
+        ESP_LOGI(TAG, "BOOT key pressed");
+        bk_press_start_ms = now_ms;
+        if (rt->screen_off) rt->swallow_btn_a = true;
+        wake();
+    }
 
-        if (last_level == 1 && level == 0) {
-            /* 按下 */
-            press_start_ms = now_ms;
-            if (rt->screen_off) {
-                rt->swallow_btn_a = true;
-            }
-            wake();
-        }
+    if (bk_last_level == 0 && level == 1) {
+        /* 释放 */
+        uint32_t press_dur = now_ms - bk_press_start_ms;
+        ESP_LOGI(TAG, "BOOT key released, dur=%lu ms", press_dur);
 
-        if (last_level == 0 && level == 1) {
-            /* 释放 */
-            uint32_t press_dur = now_ms - press_start_ms;
-
-            if (rt->swallow_btn_a) {
-                rt->swallow_btn_a = false;
-            } else if (press_dur >= 600) {
-                /* 长按：菜单 */
-                beep(800, 60);
-                if (ui->reset_open) {
-                    ui->reset_open = false;
-                } else if (ui->settings_open) {
+        if (rt->swallow_btn_a) {
+            rt->swallow_btn_a = false;
+        } else if (press_dur >= 600) {
+            /* 长按 */
+            beep(800, 60);
+            if (buddy_has_pending_prompt()) {
+                char cmd[96];
+                snprintf(cmd, sizeof(cmd),
+                         "{\"cmd\":\"permission\",\"id\":\"%s\",\"decision\":\"deny\"}",
+                         buddy_get_claude_state()->prompt_id);
+                send_cmd(cmd);
+                rt->response_sent = true;
+                buddy_stats_on_denial();
+                beep(1000, 80);
+                buddy_trigger_oneshot(PERSONA_DIZZY, 2000);
+                buddy_ui_hide_approval();
+            } else if (ui->reset_open) {
+                ui->reset_open = false;
+            } else if (ui->settings_open) {
+                switch ((BuddySettingItem)ui->settings_sel) {
+                case BUDDY_SET_BRIGHTNESS: {
+                    ui->bright_level = (ui->bright_level + 1) % 5;
+                    apply_brightness();
+                    buddy_ui_settings_set_brightness(ui->bright_level * 25);
+                    beep(1800, 30);
+                    break;
+                }
+                case BUDDY_SET_SOUND: {
+                    BuddySettings *set = buddy_settings_get();
+                    set->sound = !set->sound;
+                    buddy_ui_settings_set_toggle(BUDDY_SET_SOUND, set->sound);
+                    if (set->sound) beep(2000, 50);
+                    buddy_settings_save();
+                    break;
+                }
+                case BUDDY_SET_BT: {
+                    BuddySettings *set = buddy_settings_get();
+                    set->bt = !set->bt;
+                    buddy_ui_settings_set_toggle(BUDDY_SET_BT, set->bt);
+                    if (set->bt) ble_init(s_bt_name);
+                    else ble_clear_bonds();
+                    buddy_settings_save();
+                    break;
+                }
+                case BUDDY_SET_WIFI: {
+                    BuddySettings *set = buddy_settings_get();
+                    set->wifi = !set->wifi;
+                    buddy_ui_settings_set_toggle(BUDDY_SET_WIFI, set->wifi);
+                    buddy_settings_save();
+                    break;
+                }
+                case BUDDY_SET_LED: {
+                    BuddySettings *set = buddy_settings_get();
+                    set->led = !set->led;
+                    buddy_ui_settings_set_toggle(BUDDY_SET_LED, set->led);
+                    buddy_settings_save();
+                    break;
+                }
+                case BUDDY_SET_HUD: {
+                    BuddySettings *set = buddy_settings_get();
+                    set->hud = !set->hud;
+                    buddy_ui_settings_set_toggle(BUDDY_SET_HUD, set->hud);
+                    buddy_ui_set_hud_visible(set->hud);
+                    buddy_settings_save();
+                    break;
+                }
+                case BUDDY_SET_ROTATE: {
+                    BuddySettings *set = buddy_settings_get();
+                    set->clock_rot = (set->clock_rot + 1) % 3;
+                    buddy_settings_save();
+                    beep(1800, 30);
+                    break;
+                }
+                case BUDDY_SET_ASCII: {
+                    ui->buddy_mode = !ui->buddy_mode;
+                    buddy_ui_settings_set_toggle(BUDDY_SET_ASCII, ui->buddy_mode);
+                    if (ui->buddy_mode) buddy_anim_set_species_idx(0);
+                    break;
+                }
+                case BUDDY_SET_RESET: {
                     ui->settings_open = false;
+                    buddy_ui_show_settings(false);
+                    ui->reset_open = true;
+                    ui->reset_sel = 0;
+                    ui->reset_confirm_idx = 0xFF;
+                    break;
+                }
+                case BUDDY_SET_BACK: {
+                    ui->settings_open = false;
+                    buddy_ui_show_settings(false);
                     buddy_anim_invalidate();
-                } else {
-                    ui->menu_open = !ui->menu_open;
-                    ui->menu_sel = 0;
-                    buddy_ui_show_menu(ui->menu_open);
-                    if (!ui->menu_open) buddy_anim_invalidate();
+                    break;
+                }
+                default: break;
+                }
+            } else if (ui->menu_open) {
+                ui->menu_open = false;
+                buddy_ui_show_menu(false);
+                buddy_anim_invalidate();
+            } else {
+                ui->menu_open = true;
+                ui->menu_sel = 0;
+                buddy_ui_show_menu(true);
+            }
+        } else {
+            /* 短按 */
+            beep(1800, 30);
+            if (buddy_has_pending_prompt()) {
+                char cmd[96];
+                snprintf(cmd, sizeof(cmd),
+                         "{\"cmd\":\"permission\",\"id\":\"%s\",\"decision\":\"once\"}",
+                         buddy_get_claude_state()->prompt_id);
+                send_cmd(cmd);
+                rt->response_sent = true;
+                uint32_t took_s = (now_ms - rt->prompt_arrived_ms) / 1000;
+                buddy_stats_on_approval(took_s);
+                beep(2400, 60);
+                if (took_s < 5) buddy_trigger_oneshot(PERSONA_HEART, 2000);
+                buddy_ui_hide_approval();
+            } else if (ui->reset_open) {
+                ui->reset_sel = (ui->reset_sel + 1) % 3;
+                ui->reset_confirm_idx = 0xFF;
+            } else if (ui->settings_open) {
+                ui->settings_sel = (ui->settings_sel + 1) % 10;
+                buddy_ui_settings_select((BuddySettingItem)ui->settings_sel);
+            } else if (ui->menu_open) {
+                switch ((BuddyMenuItem)ui->menu_sel) {
+                case BUDDY_MENU_SETTINGS:
+                    ui->menu_open = false;
+                    buddy_ui_show_menu(false);
+                    ui->settings_open = true;
+                    ui->settings_sel = 0;
+                    buddy_ui_show_settings(true);
+                    buddy_ui_settings_select(BUDDY_SET_BRIGHTNESS);
+                    break;
+                case BUDDY_MENU_SHUTDOWN:
+                    ui->menu_open = false;
+                    buddy_ui_show_menu(false);
+                    ESP_LOGI(TAG, "Shutdown requested");
+                    backlight_set_on(false);
+                    rt->screen_off = true;
+                    esp_sleep_enable_ext0_wakeup(BOOT_KEY_PIN, 0);
+                    esp_deep_sleep_start();
+                    break;
+                case BUDDY_MENU_HELP:
+                    ui->menu_open = false;
+                    buddy_ui_show_menu(false);
+                    buddy_ui_set_hud_text("Short=nav  Long=back");
+                    buddy_ui_set_hud_visible(true);
+                    break;
+                case BUDDY_MENU_ABOUT:
+                    ui->menu_open = false;
+                    buddy_ui_show_menu(false);
+                    ui->display_mode = DISP_INFO;
+                    ui->info_page = INFO_PAGE_ABOUT;
+                    buddy_ui_set_mode(BUDDY_MODE_INFO);
+                    buddy_ui_set_info_page(INFO_PAGE_ABOUT);
+                    break;
+                case BUDDY_MENU_DEMO:
+                    ui->menu_open = false;
+                    buddy_ui_show_menu(false);
+                    buddy_set_demo(!buddy_is_demo());
+                    buddy_ui_set_hud_text(buddy_is_demo() ? "Demo ON" : "Demo OFF");
+                    buddy_ui_set_hud_visible(true);
+                    buddy_anim_invalidate();
+                    break;
+                case BUDDY_MENU_CLOSE:
+                    ui->menu_open = false;
+                    buddy_ui_show_menu(false);
+                    buddy_anim_invalidate();
+                    break;
+                default: break;
                 }
             } else {
-                /* 短按 */
-                beep(1800, 30);
-                if (buddy_has_pending_prompt()) {
-                    /* 批准 */
-                    char cmd[96];
-                    snprintf(cmd, sizeof(cmd),
-                             "{\"cmd\":\"permission\",\"id\":\"%s\",\"decision\":\"once\"}",
-                             buddy_get_claude_state()->prompt_id);
-                    send_cmd(cmd);
-                    rt->response_sent = true;
-                    uint32_t took_s = (now_ms - rt->prompt_arrived_ms) / 1000;
-                    buddy_stats_on_approval(took_s);
-                    beep(2400, 60);
-                    if (took_s < 5) buddy_trigger_oneshot(PERSONA_HEART, 2000);
-                    buddy_ui_hide_approval();
-                } else if (ui->reset_open) {
-                    ui->reset_sel = (ui->reset_sel + 1) % 3;
-                    ui->reset_confirm_idx = 0xFF;
-                } else if (ui->settings_open) {
-                    ui->settings_sel = (ui->settings_sel + 1) % 10;
-                    buddy_ui_settings_select((BuddySettingItem)ui->settings_sel);
-                } else if (ui->menu_open) {
-                    ui->menu_sel = (ui->menu_sel + 1) % 6;
-                    buddy_ui_menu_select((BuddyMenuItem)ui->menu_sel);
-                } else {
-                    /* 切换显示模式 */
-                    ui->display_mode = (ui->display_mode + 1) % DISP_COUNT;
-                    if (ui->display_mode == DISP_NORMAL) {
-                        buddy_ui_set_mode(BUDDY_MODE_NORMAL);
-                    } else if (ui->display_mode == DISP_PET) {
-                        buddy_ui_set_mode(BUDDY_MODE_PET);
-                    } else {
-                        buddy_ui_set_mode(BUDDY_MODE_INFO);
-                    }
-                }
+                ui->display_mode = (ui->display_mode + 1) % DISP_COUNT;
+                if (ui->display_mode == DISP_NORMAL) buddy_ui_set_mode(BUDDY_MODE_NORMAL);
+                else if (ui->display_mode == DISP_PET) buddy_ui_set_mode(BUDDY_MODE_PET);
+                else buddy_ui_set_mode(BUDDY_MODE_INFO);
             }
         }
+    }
+    bk_last_level = level;
+}
 
-        last_level = level;
-        vTaskDelay(pdMS_TO_TICKS(10));
+/* BLE 数据轮询（在主循环中调用） */
+static void process_ble_poll(void) {
+    while (ble_available()) {
+        int c = ble_read();
+        if (c < 0) break;
+        uint8_t ch = (uint8_t)c;
+        buddy_feed_ble_data(&ch, 1);
     }
 }
 
-/* BLE 数据轮询任务 */
-static void ble_poll_task(void *pvParam) {
-    (void)pvParam;
-    while (1) {
-        while (ble_available()) {
-            int c = ble_read();
-            if (c < 0) break;
-            /* 通过 buddy_feed_ble_data 处理 */
-            uint8_t ch = (uint8_t)c;
-            buddy_feed_ble_data(&ch, 1);
-        }
-        vTaskDelay(pdMS_TO_TICKS(10));
-    }
+/* 覆盖层点击外部关闭回调 */
+static void on_menu_closed(void) {
+    BuddyUIState *ui = buddy_get_ui_state();
+    ui->menu_open = false;
+}
+
+static void on_settings_closed(void) {
+    BuddyUIState *ui = buddy_get_ui_state();
+    ui->settings_open = false;
+}
+
+static void on_approval_closed(void) {
+    BuddyRuntime *rt = buddy_get_runtime();
+    rt->response_sent = true;
+    buddy_stats_on_denial();
 }
 
 void app_main(void) {
@@ -480,6 +609,7 @@ void app_main(void) {
 
     /* 3. 初始化 Buddy UI */
     buddy_ui_init();
+    buddy_ui_set_overlay_close_cb(on_menu_closed, on_settings_closed, on_approval_closed);
     buddy_ui_show(true);
 
     /* 4. 初始化存储 */
@@ -500,16 +630,13 @@ void app_main(void) {
     cmdQueue = xQueueCreate(16, sizeof(UartCmd));
     uart_comm_init(&cmdQueue);
 
-    /* 8. 初始化 Wi-Fi/TCP */
-    wifi_manager_init();
-    tcp_server_init();
-
-    /* 9. 启动 BLE */
+    /* 8. 启动 BLE */
     start_ble();
 
-    /* 10. 应用亮度 */
+    /* 10. 应用亮度（禁用 backlight_manager 的自动休眠，由 buddy_main_task 统一管理） */
     apply_brightness();
-    backlight_manager_init(200);
+    backlight_manager_init(179);
+    backlight_enable_auto_sleep(false, 0, 0);  /* 禁用，避免与 buddy_main_task 冲突 */
     backlight_set_on(true);
 
     /* 11. 加载物种设置 */
@@ -532,18 +659,32 @@ void app_main(void) {
         } else {
             buddy_ui_set_hud_text("Hello!");
         }
+        buddy_ui_set_hud_visible(true);
         lv_port_disp_unlock();
     }
+    s_welcome_until_ms = esp_timer_get_time() / 1000 + 5000; /* 欢迎消息显示 5 秒 */
 
-    /* 13. 创建任务 */
-    xTaskCreate(lvgl_handler_task, "lvgl_handler", 8192, NULL, 2, NULL);
-    xTaskCreate(uart_rx_task, "uart_rx", 4096, NULL, 5, NULL);
-    xTaskCreate(cmd_process_task, "cmd_proc", 4096, NULL, 5, NULL);
-    xTaskCreate(buddy_main_task, "buddy_main", 8192, NULL, 3, NULL);
-    xTaskCreate(boot_key_task, "boot_key", 4096, NULL, 1, NULL);
-    xTaskCreate(ble_poll_task, "ble_poll", 4096, NULL, 3, NULL);
+    /* 13. 配置 BOOT 键 GPIO */
+    gpio_reset_pin(BOOT_KEY_PIN);
+    gpio_set_direction(BOOT_KEY_PIN, GPIO_MODE_INPUT);
+    gpio_pullup_en(BOOT_KEY_PIN);
+
+    /* 14. 创建最小任务集（节省内存） */
+    BaseType_t task_ret;
+    task_ret = xTaskCreate(lvgl_handler_task, "lvgl_handler", 3072, NULL, 2, NULL);
+    if (task_ret != pdPASS) ESP_LOGE(TAG, "Failed to create lvgl_handler task");
+    
+    task_ret = xTaskCreate(uart_rx_task, "uart_rx", 4096, NULL, 5, NULL);
+    if (task_ret != pdPASS) ESP_LOGE(TAG, "Failed to create uart_rx task");
+    
+    task_ret = xTaskCreate(cmd_process_task, "cmd_proc", 3072, NULL, 5, NULL);
+    if (task_ret != pdPASS) ESP_LOGE(TAG, "Failed to create cmd_proc task");
 
     ESP_LOGI(TAG, "Buddy mode: %s", ui->buddy_mode ? "ASCII" : "GIF");
+    ESP_LOGI(TAG, "Main loop starting (buddy+boot_key+ble_poll merged)");
 
-    while (1) vTaskDelay(pdMS_TO_TICKS(1000));
+    /* 15. 主循环（buddy_main_loop 内部已包含 boot_key + ble_poll + vTaskDelay） */
+    while (1) {
+        buddy_main_loop();
+    }
 }

@@ -104,7 +104,7 @@ void backlight_set_brightness(uint8_t level) {
  * 开关背光
  */
 void backlight_set_on(bool on) {
-    backlight_set_brightness(on ? 255 : 0);
+    backlight_set_brightness(on ? s_saved_brightness : 0);
 }
 
 /**
