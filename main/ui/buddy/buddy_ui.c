@@ -125,6 +125,7 @@ static bool s_set_led = true;
 static bool s_set_hud = true;
 static bool s_set_rotate = false;
 static bool s_set_ascii = false;
+static bool s_set_auto_sleep = false;
 
 /* 外部关闭回调 */
 static BuddyOverlayCloseCb s_menu_close_cb = NULL;
@@ -154,6 +155,7 @@ static const char *s_setting_texts[BUDDY_SET_MAX] = {
     LV_SYMBOL_EYE_OPEN  " HUD",
     LV_SYMBOL_REFRESH   " Rotate",
     LV_SYMBOL_FILE      " ASCII Pet",
+    LV_SYMBOL_CHARGE    " Auto Sleep",
     LV_SYMBOL_TRASH     " Reset",
     LV_SYMBOL_LEFT      " Back",
 };
@@ -720,6 +722,7 @@ static void create_settings_overlay(void) {
     buddy_ui_settings_set_toggle(BUDDY_SET_HUD, s_set_hud);
     buddy_ui_settings_set_toggle(BUDDY_SET_ROTATE, s_set_rotate);
     buddy_ui_settings_set_toggle(BUDDY_SET_ASCII, s_set_ascii);
+    buddy_ui_settings_set_toggle(BUDDY_SET_AUTO_SLEEP, s_set_auto_sleep);
     lv_label_set_text(s_setting_vals[BUDDY_SET_RESET], "");
     lv_label_set_text(s_setting_vals[BUDDY_SET_BACK], "");
 }
@@ -1080,6 +1083,7 @@ void buddy_ui_settings_set_toggle(BuddySettingItem item, bool on) {
     case BUDDY_SET_HUD:    s_set_hud = on;    break;
     case BUDDY_SET_ROTATE: s_set_rotate = on; break;
     case BUDDY_SET_ASCII:  s_set_ascii = on;  break;
+    case BUDDY_SET_AUTO_SLEEP: s_set_auto_sleep = on; break;
     default: break;
     }
     if (s_setting_vals[item]) {
