@@ -335,7 +335,8 @@ static void buddy_main_loop(void) {
     }
 
     /* 12. 自动休眠（简化：无 IMU，仅基于超时） */
-    if (!rt->screen_off && !in_prompt) {
+    BuddySettings *settings = buddy_settings_get();
+    if (settings->auto_sleep && !rt->screen_off && !in_prompt) {
         uint32_t idle_ms = now_ms - rt->last_interact_ms;
         uint32_t threshold = clocking ? CLOCK_OFF_MS_BAT : SCREEN_OFF_MS;
         if (idle_ms > threshold) {
@@ -467,6 +468,14 @@ static void process_boot_key(void) {
                     if (ui->buddy_mode) buddy_anim_set_species_idx(0);
                     break;
                 }
+                case BUDDY_SET_AUTO_SLEEP: {
+                    BuddySettings *set = buddy_settings_get();
+                    set->auto_sleep = !set->auto_sleep;
+                    buddy_ui_settings_set_toggle(BUDDY_SET_AUTO_SLEEP, set->auto_sleep);
+                    buddy_settings_save();
+                    beep(1800, 30);
+                    break;
+                }
                 case BUDDY_SET_RESET: {
                     ui->settings_open = false;
                     buddy_ui_show_settings(false);
@@ -511,7 +520,7 @@ static void process_boot_key(void) {
                 ui->reset_sel = (ui->reset_sel + 1) % 3;
                 ui->reset_confirm_idx = 0xFF;
             } else if (ui->settings_open) {
-                ui->settings_sel = (ui->settings_sel + 1) % 10;
+                ui->settings_sel = (ui->settings_sel + 1) % BUDDY_SET_MAX;
                 buddy_ui_settings_select((BuddySettingItem)ui->settings_sel);
             } else if (ui->menu_open) {
                 switch ((BuddyMenuItem)ui->menu_sel) {
@@ -649,6 +658,7 @@ void app_main(void) {
     start_ble();
     BuddySettings *set = buddy_settings_get();
     buddy_ui_settings_set_toggle(BUDDY_SET_BT, set->bt);
+    buddy_ui_settings_set_toggle(BUDDY_SET_AUTO_SLEEP, set->auto_sleep);
 
     /* 10. 应用亮度（禁用 backlight_manager 的自动休眠，由 buddy_main_task 统一管理） */
     apply_brightness();

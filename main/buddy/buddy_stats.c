@@ -16,7 +16,7 @@ static const char *TAG = "BUDDY_STATS";
 #define NVS_NAMESPACE "buddy"
 
 static BuddyStats   s_stats = {0};
-static BuddySettings s_settings = { true, true, false, true, true, 0 };
+static BuddySettings s_settings = { true, true, false, true, true, false, 0 };
 static nvs_handle_t s_nvs_handle = 0;
 static bool s_nvs_open = false;
 
@@ -134,6 +134,9 @@ void buddy_settings_init(void) {
 
     err = nvs_get_u8(s_nvs_handle, "s_hud", &val8);
     s_settings.hud = (err == ESP_OK) ? val8 : true;
+
+    err = nvs_get_u8(s_nvs_handle, "s_aslp", &val8);
+    s_settings.auto_sleep = (err == ESP_OK) ? val8 : false;
 
     err = nvs_get_u8(s_nvs_handle, "s_crot", &val8);
     s_settings.clock_rot = (err == ESP_OK && val8 <= 2) ? val8 : 0;
@@ -285,6 +288,7 @@ void buddy_settings_save(void) {
     nvs_set_u8(s_nvs_handle, "s_wifi", s_settings.wifi);
     nvs_set_u8(s_nvs_handle, "s_led", s_settings.led);
     nvs_set_u8(s_nvs_handle, "s_hud", s_settings.hud);
+    nvs_set_u8(s_nvs_handle, "s_aslp", s_settings.auto_sleep);
     nvs_set_u8(s_nvs_handle, "s_crot", s_settings.clock_rot);
     nvs_commit(s_nvs_handle);
     _nvs_close();

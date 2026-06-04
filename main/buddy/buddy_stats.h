@@ -33,6 +33,7 @@ typedef struct {
     bool wifi;
     bool led;
     bool hud;
+    bool auto_sleep;    /* true=启用自动息屏, false=禁用 */
     uint8_t clock_rot;  /* 0=auto 1=portrait 2=landscape */
 } BuddySettings;
 
