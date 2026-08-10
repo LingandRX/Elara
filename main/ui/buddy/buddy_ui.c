@@ -208,7 +208,7 @@ static void create_normal_page(void) {
     lv_label_set_text(s_clock_label, "12:00");
     lv_obj_set_style_text_color(s_clock_label, COLOR_TEXT, 0);
     lv_obj_set_style_text_font(s_clock_label, LV_FONT_DEFAULT, 0);
-    lv_obj_align(s_clock_label, LV_ALIGN_TOP_MID, 0, 4);
+    lv_obj_align(s_clock_label, LV_ALIGN_TOP_LEFT, 4, 4);
 
     /* 电池标签（右上角） */
     s_battery_label = lv_label_create(s_normal_page);
