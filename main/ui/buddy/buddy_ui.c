@@ -6,7 +6,6 @@
 
 #include "buddy_ui.h"
 #include "buddy_anim.h"
-#include "ble_bridge.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include <string.h>
@@ -87,20 +86,12 @@ static lv_obj_t *s_btn_reject = NULL;
 static lv_obj_t *s_lbl_approve = NULL;
 static lv_obj_t *s_lbl_reject = NULL;
 
-/* BLE 配对覆盖层 */
-static lv_obj_t *s_ble_overlay = NULL;
-static lv_obj_t *s_ble_panel = NULL;
-static lv_obj_t *s_ble_title = NULL;
-static lv_obj_t *s_ble_code = NULL;
-static lv_obj_t *s_ble_hint = NULL;
-
 /* ============ 状态变量 ============ */
 static BuddyMode s_mode = BUDDY_MODE_NORMAL;
 static bool s_ui_visible = false;
 static bool s_menu_visible = false;
 static bool s_settings_visible = false;
 static bool s_approval_visible = false;
-static bool s_ble_visible = false;
 static InfoPageIdx s_info_idx = INFO_PAGE_ABOUT;
 static int s_menu_selected = 0;
 static int s_settings_selected = 0;
@@ -119,7 +110,6 @@ static int s_pet_level = 1;
 /* 设置状态 */
 static int  s_brightness_pct = 80;
 static bool s_set_sound = true;
-static bool s_set_bt = false;
 static bool s_set_wifi = false;
 static bool s_set_led = true;
 static bool s_set_hud = true;
@@ -149,7 +139,6 @@ static const char *s_menu_texts[BUDDY_MENU_MAX] = {
 static const char *s_setting_texts[BUDDY_SET_MAX] = {
     LV_SYMBOL_IMAGE     " Brightness",
     LV_SYMBOL_VOLUME_MAX" Sound",
-    LV_SYMBOL_BLUETOOTH " Bluetooth",
     LV_SYMBOL_WIFI      " Wi-Fi",
     LV_SYMBOL_BULLET    " LED",
     LV_SYMBOL_EYE_OPEN  " HUD",
@@ -166,7 +155,7 @@ static const char *s_info_titles[INFO_PAGE_MAX] = {
     "Buttons",
     "Claude",
     "Device",
-    "Bluetooth",
+    "Network",
     "Battery",
     "Credits",
 };
@@ -473,20 +462,20 @@ static void update_info_content(void) {
             "Battery: ADC GPIO4");
         break;
     }
-    case INFO_PAGE_BT: {
+    case INFO_PAGE_NETWORK: {
+        extern bool wifi_manager_get_ip(char *ip_str, size_t max_len);
+        char ip[16] = "-";
+        wifi_manager_get_ip(ip, sizeof(ip));
         lv_label_set_text_fmt(s_info_content,
-            "Bluetooth\n"
+            "Network\n"
             "=========\n"
-            "Status: %s\n"
-            "Mode: BLE\n"
-            "Name: %s\n\n"
-            "Service:\n"
-            "  Nordic UART\n"
-            "  (NUS)\n\n"
-            "Security:\n"
-            "  No pairing req.",
-            ble_connected() ? "Connected" : "Advertising",
-            ble_get_device_name());
+            "WiFi: %s\n"
+            "IP: %s\n\n"
+            "TCP Server:\n"
+            "  Port 8080\n\n"
+            "Transport:\n"
+            "  JSON line protocol",
+            ip[0] ? "Connected" : "Disconnected", ip);
         break;
     }
     case INFO_PAGE_BATTERY: {
@@ -716,7 +705,6 @@ static void create_settings_overlay(void) {
     /* 初始化设置值显示 */
     buddy_ui_settings_set_brightness(s_brightness_pct);
     buddy_ui_settings_set_toggle(BUDDY_SET_SOUND, s_set_sound);
-    buddy_ui_settings_set_toggle(BUDDY_SET_BT, s_set_bt);
     buddy_ui_settings_set_toggle(BUDDY_SET_WIFI, s_set_wifi);
     buddy_ui_settings_set_toggle(BUDDY_SET_LED, s_set_led);
     buddy_ui_settings_set_toggle(BUDDY_SET_HUD, s_set_hud);
@@ -818,49 +806,6 @@ static void create_approval_overlay(void) {
     lv_obj_center(s_lbl_reject);
 }
 
-/* ============ BLE 配对覆盖层创建 ============ */
-
-static void create_ble_overlay(void) {
-    s_ble_overlay = lv_obj_create(s_container);
-    lv_obj_set_size(s_ble_overlay, SCREEN_W, SCREEN_H);
-    lv_obj_set_style_bg_color(s_ble_overlay, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(s_ble_overlay, LV_OPA_60, 0);
-    lv_obj_set_style_border_width(s_ble_overlay, 0, 0);
-    lv_obj_set_style_radius(s_ble_overlay, 0, 0);
-    obj_set_pad_all(s_ble_overlay, 0);
-    lv_obj_align(s_ble_overlay, LV_ALIGN_TOP_LEFT, 0, 0);
-    lv_obj_clear_flag(s_ble_overlay, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(s_ble_overlay, LV_OBJ_FLAG_HIDDEN);
-
-    s_ble_panel = lv_obj_create(s_ble_overlay);
-    lv_obj_set_size(s_ble_panel, 140, 120);
-    lv_obj_set_style_bg_color(s_ble_panel, COLOR_BG, 0);
-    lv_obj_set_style_border_width(s_ble_panel, 2, 0);
-    lv_obj_set_style_border_color(s_ble_panel, lv_color_hex(0x64B4FF), 0);
-    lv_obj_set_style_radius(s_ble_panel, 8, 0);
-    obj_set_pad_all(s_ble_panel, 6);
-    lv_obj_center(s_ble_panel);
-    lv_obj_clear_flag(s_ble_panel, LV_OBJ_FLAG_SCROLLABLE);
-
-    s_ble_title = lv_label_create(s_ble_panel);
-    lv_label_set_text(s_ble_title, LV_SYMBOL_BLUETOOTH " PAIRING");
-    lv_obj_set_style_text_color(s_ble_title, lv_color_hex(0x64B4FF), 0);
-    lv_obj_set_style_text_font(s_ble_title, LV_FONT_DEFAULT, 0);
-    lv_obj_align(s_ble_title, LV_ALIGN_TOP_MID, 0, 4);
-
-    s_ble_code = lv_label_create(s_ble_panel);
-    lv_label_set_text(s_ble_code, "000000");
-    lv_obj_set_style_text_color(s_ble_code, COLOR_TEXT, 0);
-    lv_obj_set_style_text_font(s_ble_code, LV_FONT_DEFAULT, 0);
-    lv_obj_align(s_ble_code, LV_ALIGN_CENTER, 0, -4);
-
-    s_ble_hint = lv_label_create(s_ble_panel);
-    lv_label_set_text(s_ble_hint, "Enter code on device");
-    lv_obj_set_style_text_color(s_ble_hint, COLOR_TEXT_DIM, 0);
-    lv_obj_set_style_text_font(s_ble_hint, LV_FONT_DEFAULT, 0);
-    lv_obj_align(s_ble_hint, LV_ALIGN_BOTTOM_MID, 0, -4);
-}
-
 /* ============ 回调注册 ============ */
 
 void buddy_ui_set_overlay_close_cb(BuddyOverlayCloseCb menu_cb,
@@ -896,7 +841,6 @@ void buddy_ui_init(void) {
     create_menu_overlay();
     create_settings_overlay();
     create_approval_overlay();
-    create_ble_overlay();
 
     /* 初始化显示 */
     switch_mode_pages();
@@ -1077,7 +1021,6 @@ void buddy_ui_settings_set_toggle(BuddySettingItem item, bool on) {
     if (item < 0 || item >= BUDDY_SET_MAX) return;
     switch (item) {
     case BUDDY_SET_SOUND:  s_set_sound = on;  break;
-    case BUDDY_SET_BT:     s_set_bt = on;     break;
     case BUDDY_SET_WIFI:   s_set_wifi = on;   break;
     case BUDDY_SET_LED:    s_set_led = on;    break;
     case BUDDY_SET_HUD:    s_set_hud = on;    break;
@@ -1116,25 +1059,6 @@ void buddy_ui_set_clock(int hour, int minute, int second) {
     if (s_clock_label) {
         lv_label_set_text_fmt(s_clock_label, "%02d:%02d", hour, minute);
     }
-}
-
-/* ============ BLE 配对 ============ */
-
-void buddy_ui_set_ble_pairing_code(const char *code) {
-    if (!s_ble_code || !code) return;
-    lv_label_set_text(s_ble_code, code);
-}
-
-void buddy_ui_show_ble_pairing(bool show) {
-    s_ble_visible = show;
-    obj_set_hidden(s_ble_overlay, !show);
-    if (show) {
-        lv_obj_move_foreground(s_ble_overlay);
-    }
-}
-
-bool buddy_ui_is_ble_pairing_visible(void) {
-    return s_ble_visible;
 }
 
 /* ============ 电池状态 ============ */

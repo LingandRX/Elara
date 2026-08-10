@@ -10,7 +10,6 @@
 #include "freertos/queue.h"
 #include "esp_log.h"
 #include "esp_system.h"
-#include "esp_mac.h"
 #include "esp_timer.h"
 #include "esp_sleep.h"
 #include "driver/gpio.h"
@@ -26,7 +25,8 @@
 #include "ui/buddy/buddy_ui.h"
 #include "ui/buddy/buddy_anim.h"
 #include "comm/uart_comm.h"
-#include "comm/ble_bridge.h"
+#include "comm/tcp_server.h"
+#include "wifi_manager.h"
 #include "storage_manager.h"
 #include "buddy/buddy_state.h"
 #include "buddy/buddy_stats.h"
@@ -44,7 +44,6 @@ static QueueHandle_t cmdQueue;
 
 /* 运行状态 */
 static uint32_t s_tick = 0;
-static char s_bt_name[24] = "Claude";
 static uint32_t s_welcome_until_ms = 0;
 
 /* 常量 */
@@ -96,15 +95,6 @@ static esp_err_t lcd_init(void) {
     return ESP_OK;
 }
 
-/* 启动 BLE */
-static void start_ble(void) {
-    uint8_t mac[6] = {0};
-    esp_read_mac(mac, ESP_MAC_BT);
-    snprintf(s_bt_name, sizeof(s_bt_name), "Claude-%02X%02X", mac[4], mac[5]);
-    ble_init(s_bt_name);
-    ESP_LOGI(TAG, "BLE advertising as '%s'", s_bt_name);
-}
-
 /* 应用亮度 */
 static void apply_brightness(void) {
     BuddyUIState *ui = buddy_get_ui_state();
@@ -133,8 +123,6 @@ static void wake(void) {
 static void send_cmd(const char *json) {
     uart_send_raw(json, strlen(json));
     uart_send_raw("\n", 1);
-    ble_write((const uint8_t *)json, strlen(json));
-    ble_write((const uint8_t *)"\n", 1);
 }
 
 /* 提示音（禁用，因为没有音频硬件） */
@@ -179,7 +167,6 @@ static void cmd_process_task(void *pvParam) {
 
 /* 前向声明（定义在下方） */
 static void process_boot_key(void);
-static void process_ble_poll(void);
 
 /* 主循环 - 核心状态机（直接内联到 app_main，不创建独立任务） */
 static void buddy_main_loop(void) {
@@ -187,7 +174,6 @@ static void buddy_main_loop(void) {
     BuddyUIState *ui = buddy_get_ui_state();
     ClaudeState *claude = buddy_get_claude_state();
 
-    static uint32_t last_passkey = 0;
     static bool was_clocking = false;
 
     s_tick++;
@@ -282,21 +268,6 @@ static void buddy_main_loop(void) {
         }
     }
 
-    /* 10. BLE 配对码 */
-    uint32_t pk = ble_passkey();
-    if (pk && !last_passkey) {
-        wake();
-        beep(1800, 60);
-        char code[16];
-        snprintf(code, sizeof(code), "%06lu", (unsigned long)pk);
-        buddy_ui_set_ble_pairing_code(code);
-        buddy_ui_show_ble_pairing(true);
-    }
-    if (!pk && last_passkey) {
-        buddy_ui_show_ble_pairing(false);
-    }
-    last_passkey = pk;
-
     /* 11. 电池监测（每10秒更新一次） */
     static uint32_t last_bat_update = 0;
     if (now_ms - last_bat_update >= 10000) {
@@ -351,15 +322,14 @@ static void buddy_main_loop(void) {
         loop_ms = 200;
     } else if (rt->napping || in_prompt || ui->menu_open ||
                ui->settings_open || ui->reset_open ||
-               (int32_t)(now_ms - rt->oneshot_until_ms) < 0 || pk) {
+               (int32_t)(now_ms - rt->oneshot_until_ms) < 0) {
         loop_ms = 16;
     } else {
         loop_ms = 100;
     }
 
-    /* 在主循环中处理 BOOT 键和 BLE 轮询，减少任务数量 */
+    /* 在主循环中处理 BOOT 键，减少任务数量 */
     process_boot_key();
-    process_ble_poll();
 
     vTaskDelay(pdMS_TO_TICKS(loop_ms));
 }
@@ -421,15 +391,6 @@ static void process_boot_key(void) {
                     set->sound = !set->sound;
                     buddy_ui_settings_set_toggle(BUDDY_SET_SOUND, set->sound);
                     if (set->sound) beep(2000, 50);
-                    buddy_settings_save();
-                    break;
-                }
-                case BUDDY_SET_BT: {
-                    BuddySettings *set = buddy_settings_get();
-                    set->bt = !set->bt;
-                    buddy_ui_settings_set_toggle(BUDDY_SET_BT, set->bt);
-                    if (set->bt) ble_init(s_bt_name);
-                    else ble_clear_bonds();
                     buddy_settings_save();
                     break;
                 }
@@ -581,16 +542,6 @@ static void process_boot_key(void) {
     bk_last_level = level;
 }
 
-/* BLE 数据轮询（在主循环中调用） */
-static void process_ble_poll(void) {
-    while (ble_available()) {
-        int c = ble_read();
-        if (c < 0) break;
-        uint8_t ch = (uint8_t)c;
-        buddy_feed_ble_data(&ch, 1);
-    }
-}
-
 /* 覆盖层点击外部关闭回调 */
 static void on_menu_closed(void) {
     BuddyUIState *ui = buddy_get_ui_state();
@@ -611,7 +562,7 @@ static void on_approval_closed(void) {
 void app_main(void) {
     ESP_LOGI(TAG, "Elara Buddy Starting...");
 
-    /* 0. 初始化 NVS（BLE、Buddy Stats 等模块依赖 NVS） */
+    /* 0. 初始化 NVS（Buddy Stats 等模块依赖 NVS） */
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
@@ -654,11 +605,22 @@ void app_main(void) {
     cmdQueue = xQueueCreate(16, sizeof(UartCmd));
     uart_comm_init(&cmdQueue);
 
-    /* 8. 启动 BLE */
-    start_ble();
+    /* 7.5 尽早创建任务，避免后续 WiFi 占用内部 RAM 后失败 */
+    BaseType_t task_ret;
+    task_ret = xTaskCreate(lvgl_handler_task, "lvgl_handler", 3072, NULL, 2, NULL);
+    if (task_ret != pdPASS) ESP_LOGE(TAG, "Failed to create lvgl_handler task");
+    task_ret = xTaskCreate(uart_rx_task, "uart_rx", 4096, NULL, 5, NULL);
+    if (task_ret != pdPASS) ESP_LOGE(TAG, "Failed to create uart_rx task");
+    task_ret = xTaskCreate(cmd_process_task, "cmd_proc", 3072, NULL, 5, NULL);
+    if (task_ret != pdPASS) ESP_LOGE(TAG, "Failed to create cmd_proc task");
+
+    /* 8. 应用设置 */
     BuddySettings *set = buddy_settings_get();
-    buddy_ui_settings_set_toggle(BUDDY_SET_BT, set->bt);
     buddy_ui_settings_set_toggle(BUDDY_SET_AUTO_SLEEP, set->auto_sleep);
+
+    /* 8.5 启动 WiFi 与 TCP Server（上位机网络通信，强制开启） */
+    wifi_manager_init();
+    tcp_server_init();
 
     /* 10. 应用亮度（禁用 backlight_manager 的自动休眠，由 buddy_main_task 统一管理） */
     apply_brightness();
@@ -691,26 +653,15 @@ void app_main(void) {
     }
     s_welcome_until_ms = esp_timer_get_time() / 1000 + 5000; /* 欢迎消息显示 5 秒 */
 
-    /* 13. 配置 BOOT 键 GPIO */
+    /* 14. 配置 BOOT 键 GPIO */
     gpio_reset_pin(BOOT_KEY_PIN);
     gpio_set_direction(BOOT_KEY_PIN, GPIO_MODE_INPUT);
     gpio_pullup_en(BOOT_KEY_PIN);
 
-    /* 14. 创建最小任务集（节省内存） */
-    BaseType_t task_ret;
-    task_ret = xTaskCreate(lvgl_handler_task, "lvgl_handler", 3072, NULL, 2, NULL);
-    if (task_ret != pdPASS) ESP_LOGE(TAG, "Failed to create lvgl_handler task");
-    
-    task_ret = xTaskCreate(uart_rx_task, "uart_rx", 4096, NULL, 5, NULL);
-    if (task_ret != pdPASS) ESP_LOGE(TAG, "Failed to create uart_rx task");
-    
-    task_ret = xTaskCreate(cmd_process_task, "cmd_proc", 3072, NULL, 5, NULL);
-    if (task_ret != pdPASS) ESP_LOGE(TAG, "Failed to create cmd_proc task");
-
     ESP_LOGI(TAG, "Buddy mode: %s", ui->buddy_mode ? "ASCII" : "GIF");
-    ESP_LOGI(TAG, "Main loop starting (buddy+boot_key+ble_poll merged)");
+    ESP_LOGI(TAG, "Main loop starting (buddy+boot_key merged)");
 
-    /* 15. 主循环（buddy_main_loop 内部已包含 boot_key + ble_poll + vTaskDelay） */
+    /* 15. 主循环（buddy_main_loop 内部已包含 boot_key + vTaskDelay） */
     while (1) {
         buddy_main_loop();
     }

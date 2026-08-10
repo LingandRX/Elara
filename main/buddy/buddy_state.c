@@ -6,7 +6,6 @@
 #include "buddy_state.h"
 #include "buddy_stats.h"
 #include "esp_log.h"
-#include "esp_mac.h"
 #include "esp_random.h"
 #include "esp_timer.h"
 #include <string.h>
@@ -54,13 +53,9 @@ typedef struct {
 } LineBuf;
 
 static LineBuf s_usb_line = {0};
-static LineBuf s_bt_line = {0};
 
 /* 外部声明（由通信模块实现） */
 extern void uart_send_raw(const char *data, size_t len);
-extern size_t ble_write(const uint8_t *data, size_t len);
-extern bool ble_connected(void);
-extern bool ble_secure(void);
 
 /* 模拟场景（用于 demo 模式） */
 typedef struct {
@@ -269,7 +264,7 @@ static void linebuf_feed(LineBuf *lb, const char *data, size_t len, ClaudeState 
     }
 }
 
-/* 从 USB/BLE 轮询数据 */
+/* 从 USB 轮询数据 */
 void buddy_data_poll(ClaudeState *out) {
     uint32_t now_ms = esp_timer_get_time() / 1000;
 
@@ -292,7 +287,6 @@ void buddy_data_poll(ClaudeState *out) {
     }
 
     /* USB 数据由 uart_comm 通过回调传入 */
-    /* BLE 数据由 ble_bridge 提供 */
 }
 
 /* 外部供 uart_comm 调用 */
@@ -300,27 +294,14 @@ void buddy_feed_usb_line(const char *data, size_t len) {
     linebuf_feed(&s_usb_line, data, len, &s_claude);
 }
 
-/* 外部供 ble_bridge 调用 */
-void buddy_feed_ble_data(const uint8_t *data, size_t len) {
-    linebuf_feed(&s_bt_line, (const char *)data, len, &s_claude);
-    if (len > 0) {
-        s_runtime.last_bt_byte_ms = esp_timer_get_time() / 1000;
-    }
-}
-
 bool buddy_data_connected(void) {
     uint32_t now = esp_timer_get_time() / 1000;
     return s_runtime.last_live_ms != 0 && (now - s_runtime.last_live_ms) <= 30000;
 }
 
-bool buddy_data_bt_active(void) {
-    uint32_t now = esp_timer_get_time() / 1000;
-    return s_runtime.last_bt_byte_ms != 0 && (now - s_runtime.last_bt_byte_ms) <= 15000;
-}
-
 const char* buddy_scenario_name(void) {
     if (s_runtime.demo_mode) return FAKES[s_runtime.demo_idx].name;
-    if (buddy_data_connected()) return buddy_data_bt_active() ? "bt" : "usb";
+    if (buddy_data_connected()) return "usb";
     return "none";
 }
 
@@ -352,9 +333,6 @@ void buddy_send_cmd(const char *json) {
     /* 发送到 USB */
     uart_send_raw(json, strlen(json));
     uart_send_raw("\n", 1);
-    /* 发送到 BLE */
-    ble_write((const uint8_t *)json, strlen(json));
-    ble_write((const uint8_t *)"\n", 1);
 }
 
 /* 获取当前本地时间（简化版，基于软件 RTC） */

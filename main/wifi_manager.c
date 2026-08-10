@@ -4,21 +4,57 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "nvs.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/timers.h"
 #include <string.h>
 
 static const char *TAG = "WIFI_MGR";
 static char s_current_ip[16] = "";
+static int s_retry_count = 0;
+static TimerHandle_t s_retry_timer = NULL;
+
+#define WIFI_MAX_RETRY  5
+#define WIFI_RETRY_BASE_MS 1000
+
+static void wifi_retry_timer_cb(TimerHandle_t xTimer) {
+    ESP_LOGI(TAG, "WiFi reconnect attempt %d/%d...", s_retry_count, WIFI_MAX_RETRY);
+    esp_wifi_connect();
+}
 
 static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data) {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-        ESP_LOGW(TAG, "Disconnected from Wi-Fi.");
+        wifi_event_sta_disconnected_t* e = (wifi_event_sta_disconnected_t*) event_data;
+        ESP_LOGW(TAG, "Disconnected from Wi-Fi. reason=%d (%s)", e->reason,
+                 e->reason == WIFI_REASON_AUTH_FAIL ? "AUTH_FAIL 密码错误" :
+                 e->reason == WIFI_REASON_NO_AP_FOUND ? "NO_AP_FOUND 找不到热点" :
+                 e->reason == WIFI_REASON_AUTH_EXPIRE ? "AUTH_EXPIRE" :
+                 e->reason == WIFI_REASON_HANDSHAKE_TIMEOUT ? "HANDSHAKE_TIMEOUT" :
+                 e->reason == WIFI_REASON_ASSOC_FAIL ? "ASSOC_FAIL 关联失败" :
+                 e->reason == WIFI_REASON_DISASSOC_DUE_TO_INACTIVITY ? "DISASSOC_DUE_TO_INACTIVITY" : "其他");
         s_current_ip[0] = '\0';
+
+        /* 自动重连（指数退避定时器），避免瞬时失败后不再连接 */
+        if (s_retry_count < WIFI_MAX_RETRY) {
+            uint32_t delay_ms = WIFI_RETRY_BASE_MS * (1u << s_retry_count);
+            if (delay_ms > 8000) delay_ms = 8000;
+            s_retry_count++;
+            if (!s_retry_timer) {
+                s_retry_timer = xTimerCreate("wifi_retry", pdMS_TO_TICKS(delay_ms),
+                                             pdFALSE, NULL, wifi_retry_timer_cb);
+            }
+            if (s_retry_timer) {
+                xTimerChangePeriod(s_retry_timer, pdMS_TO_TICKS(delay_ms), 0);
+            }
+        } else {
+            ESP_LOGW(TAG, "WiFi connect failed after %d retries", WIFI_MAX_RETRY);
+        }
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
         ESP_LOGI(TAG, "Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
         snprintf(s_current_ip, sizeof(s_current_ip), IPSTR, IP2STR(&event->ip_info.ip));
+        s_retry_count = 0;
     }
 }
 
@@ -43,10 +79,25 @@ void wifi_manager_init(void) {
         },
     };
 
-    /* 硬编码 Wi-Fi 凭据 */
-    strncpy((char *)wifi_config.sta.ssid, "ZTE-6AkyCN", sizeof(wifi_config.sta.ssid));
-    strncpy((char *)wifi_config.sta.password, "07200329", sizeof(wifi_config.sta.password));
-    ESP_LOGI(TAG, "Using hardcoded Wi-Fi config. SSID: %s", wifi_config.sta.ssid);
+    /* 优先使用 NVS 中保存的 Wi-Fi 凭据，未保存时才回退到硬编码 */
+    char saved_ssid[64] = {0};
+    if (wifi_manager_get_saved_config(saved_ssid, sizeof(saved_ssid))) {
+        nvs_handle_t nvs_handle;
+        char saved_pass[64] = {0};
+        if (nvs_open("wifi_cfg", NVS_READONLY, &nvs_handle) == ESP_OK) {
+            size_t len = sizeof(saved_pass);
+            nvs_get_str(nvs_handle, "password", saved_pass, &len);
+            nvs_close(nvs_handle);
+        }
+        strncpy((char *)wifi_config.sta.ssid, saved_ssid, sizeof(wifi_config.sta.ssid) - 1);
+        strncpy((char *)wifi_config.sta.password, saved_pass, sizeof(wifi_config.sta.password) - 1);
+        ESP_LOGI(TAG, "Using saved Wi-Fi config. SSID: %s", saved_ssid);
+    } else {
+        /* 硬编码 Wi-Fi 凭据（仅作为首次启动回退） */
+        strncpy((char *)wifi_config.sta.ssid, "ZTE-6AkyCN", sizeof(wifi_config.sta.ssid));
+        strncpy((char *)wifi_config.sta.password, "07200329", sizeof(wifi_config.sta.password));
+        ESP_LOGI(TAG, "Using hardcoded Wi-Fi config. SSID: %s", wifi_config.sta.ssid);
+    }
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));

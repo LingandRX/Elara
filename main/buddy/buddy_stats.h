@@ -29,7 +29,6 @@ typedef struct {
 /* 持久化设置 */
 typedef struct {
     bool sound;
-    bool bt;
     bool wifi;
     bool led;
     bool hud;

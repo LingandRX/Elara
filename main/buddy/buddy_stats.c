@@ -16,7 +16,7 @@ static const char *TAG = "BUDDY_STATS";
 #define NVS_NAMESPACE "buddy"
 
 static BuddyStats   s_stats = {0};
-static BuddySettings s_settings = { true, true, false, true, true, false, 0 };
+static BuddySettings s_settings = { true, true, true, true, false, 0 };
 static nvs_handle_t s_nvs_handle = 0;
 static bool s_nvs_open = false;
 
@@ -117,17 +117,8 @@ void buddy_settings_init(void) {
     err = nvs_get_u8(s_nvs_handle, "s_snd", &val8);
     s_settings.sound = (err == ESP_OK) ? val8 : true;
 
-    err = nvs_get_u8(s_nvs_handle, "s_bt", &val8);
-    s_settings.bt = (err == ESP_OK) ? val8 : true;
-    /* 蓝牙默认开启：若之前保存为关闭，强制重置为开启 */
-    if (!s_settings.bt) {
-        s_settings.bt = true;
-        nvs_set_u8(s_nvs_handle, "s_bt", 1);
-        nvs_commit(s_nvs_handle);
-    }
-
     err = nvs_get_u8(s_nvs_handle, "s_wifi", &val8);
-    s_settings.wifi = (err == ESP_OK) ? val8 : false;
+    s_settings.wifi = (err == ESP_OK) ? val8 : true;
 
     err = nvs_get_u8(s_nvs_handle, "s_led", &val8);
     s_settings.led = (err == ESP_OK) ? val8 : true;
@@ -284,7 +275,6 @@ void buddy_settings_save(void) {
     _nvs_open();
     if (!s_nvs_open) return;
     nvs_set_u8(s_nvs_handle, "s_snd", s_settings.sound);
-    nvs_set_u8(s_nvs_handle, "s_bt", s_settings.bt);
     nvs_set_u8(s_nvs_handle, "s_wifi", s_settings.wifi);
     nvs_set_u8(s_nvs_handle, "s_led", s_settings.led);
     nvs_set_u8(s_nvs_handle, "s_hud", s_settings.hud);
@@ -376,7 +366,7 @@ void buddy_stats_factory_reset(void) {
         _nvs_close();
     }
     memset(&s_stats, 0, sizeof(s_stats));
-    s_settings = (BuddySettings){ true, true, false, true, true, 0 };
+    s_settings = (BuddySettings){ true, true, true, true, false, 0 };
     s_pet_name[0] = '\0';
     s_owner_name[0] = '\0';
     strcpy(s_pet_name, "Pixel");

@@ -29,7 +29,7 @@ typedef enum {
     INFO_PAGE_BUTTONS,
     INFO_PAGE_CLAUDE,
     INFO_PAGE_DEVICE,
-    INFO_PAGE_BT,
+    INFO_PAGE_NETWORK,
     INFO_PAGE_BATTERY,
     INFO_PAGE_CREDITS,
     INFO_PAGE_MAX
@@ -50,7 +50,6 @@ typedef enum {
 typedef enum {
     BUDDY_SET_BRIGHTNESS = 0,
     BUDDY_SET_SOUND,
-    BUDDY_SET_BT,
     BUDDY_SET_WIFI,
     BUDDY_SET_LED,
     BUDDY_SET_HUD,
@@ -253,26 +252,6 @@ void buddy_ui_settings_set_brightness(int pct);
  * @param second 秒 (0-59)
  */
 void buddy_ui_set_clock(int hour, int minute, int second);
-
-/* ============ BLE 配对 ============ */
-
-/**
- * 设置 BLE 配对码
- * @param code 配对码字符串
- */
-void buddy_ui_set_ble_pairing_code(const char *code);
-
-/**
- * 显示/隐藏 BLE 配对码弹窗
- * @param show 是否显示
- */
-void buddy_ui_show_ble_pairing(bool show);
-
-/**
- * 判断 BLE 配对弹窗是否显示
- * @return true=显示中
- */
-bool buddy_ui_is_ble_pairing_visible(void);
 
 /* ============ 电池状态 ============ */
 
