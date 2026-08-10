@@ -6,7 +6,6 @@
 #include "xfer.h"
 #include "buddy/buddy_state.h"
 #include "buddy/buddy_stats.h"
-#include "comm/ble_bridge.h"
 #include "storage_manager.h"
 #include "esp_log.h"
 #include "mbedtls/base64.h"
@@ -34,7 +33,6 @@ static void xack(const char *what, bool ok, uint32_t n) {
                        "{\"ack\":\"%s\",\"ok\":%s,\"n\":%lu}\n",
                        what, ok ? "true" : "false", (unsigned long)n);
     uart_send_raw(b, len);
-    ble_write((const uint8_t *)b, len);
 }
 
 __attribute__((unused))
@@ -79,7 +77,6 @@ bool xfer_command(cJSON *doc) {
     }
 
     if (strcmp(cmd, "unpair") == 0) {
-        ble_clear_bonds();
         xack("unpair", true, 0);
         return true;
     }
@@ -101,12 +98,11 @@ bool xfer_command(cJSON *doc) {
             "\"stats\":{\"appr\":%u,\"deny\":%u,\"vel\":%u,\"nap\":%lu,\"lvl\":%u}"
             "}}\n",
             pet_name_get(), owner_name_get(),
-            ble_secure() ? "true" : "false",
+            "false",
             st->approvals, st->denials, buddy_stats_median_velocity(),
             (unsigned long)st->nap_seconds, st->level
         );
         uart_send_raw(b, len);
-        ble_write((const uint8_t *)b, len);
         return true;
     }
 

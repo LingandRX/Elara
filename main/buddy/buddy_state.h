@@ -67,7 +67,6 @@ typedef struct {
     uint32_t     demo_next_ms;
     bool         rtc_valid;
     uint32_t     last_live_ms;
-    uint32_t     last_bt_byte_ms;
     bool         swallow_btn_a;
     bool         swallow_btn_b;
 } BuddyRuntime;
@@ -107,13 +106,12 @@ PersonaState buddy_derive_state(const ClaudeState *s);
 void         buddy_trigger_oneshot(PersonaState s, uint32_t dur_ms);
 void         buddy_update_state(void);
 
-/* 数据轮询（从 UART/BLE 解析 JSON） */
+/* 数据轮询（从 UART 解析 JSON） */
 void buddy_data_poll(ClaudeState *out);
 void buddy_apply_json_line(const char *line, ClaudeState *out);
 
 /* 连接状态 */
 bool buddy_data_connected(void);
-bool buddy_data_bt_active(void);
 const char* buddy_scenario_name(void);
 
 /* Demo 模式 */
@@ -139,7 +137,6 @@ void buddy_send_cmd(const char *json);
 
 /* 外部数据输入 */
 void buddy_feed_usb_line(const char *data, size_t len);
-void buddy_feed_ble_data(const uint8_t *data, size_t len);
 
 /* 本地时间查询 */
 bool buddy_get_local_time(int *hour, int *min, int *sec,
