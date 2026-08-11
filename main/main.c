@@ -24,6 +24,7 @@
 #include "input/lvgl_touch.h"
 #include "ui/buddy/buddy_ui.h"
 #include "ui/buddy/buddy_anim.h"
+#include "ui/pet_ui.h"
 #include "comm/uart_comm.h"
 #include "comm/tcp_server.h"
 #include "wifi_manager.h"
@@ -159,8 +160,14 @@ static void cmd_process_task(void *pvParam) {
     UartCmd cmd;
     while (1) {
         if (xQueueReceive(cmdQueue, &cmd, pdMS_TO_TICKS(100)) == pdTRUE) {
-            /* 现有命令通过 buddy_state 处理 */
-            /* 这里可以添加对特殊命令的处理 */
+            /* petdex 命令: 打开 Petdex 动画页并切换状态 */
+            if (cmd.type == CMD_PETDEX) {
+                if (lv_port_disp_lock(-1)) {
+                    pet_ui_set_state_by_name(cmd.state);
+                    pet_ui_show(true);
+                    lv_port_disp_unlock();
+                }
+            }
         }
     }
 }
@@ -358,6 +365,15 @@ static void process_boot_key(void) {
         /* 释放 */
         uint32_t press_dur = now_ms - bk_press_start_ms;
         ESP_LOGI(TAG, "BOOT key released, dur=%lu ms", press_dur);
+
+        /* Petdex 页面: 按 BOOT 返回主界面 */
+        if (pet_ui_is_visible()) {
+            if (lv_port_disp_lock(-1)) {
+                pet_ui_show(false);
+                lv_port_disp_unlock();
+            }
+            return;
+        }
 
         if (rt->swallow_btn_a) {
             rt->swallow_btn_a = false;
@@ -588,6 +604,9 @@ void app_main(void) {
     storage_init();
     storage_init_pet_dirs();
 
+    /* 4.5 初始化 Petdex 动画页面 (需在 storage_init 之后) */
+    pet_ui_init();
+
     /* 5. 初始化 Buddy 核心 */
     buddy_state_init();
     buddy_stats_init();
@@ -607,7 +626,7 @@ void app_main(void) {
 
     /* 7.5 尽早创建任务，避免后续 WiFi 占用内部 RAM 后失败 */
     BaseType_t task_ret;
-    task_ret = xTaskCreate(lvgl_handler_task, "lvgl_handler", 3072, NULL, 2, NULL);
+    task_ret = xTaskCreate(lvgl_handler_task, "lvgl_handler", 8192, NULL, 2, NULL);
     if (task_ret != pdPASS) ESP_LOGE(TAG, "Failed to create lvgl_handler task");
     task_ret = xTaskCreate(uart_rx_task, "uart_rx", 4096, NULL, 5, NULL);
     if (task_ret != pdPASS) ESP_LOGE(TAG, "Failed to create uart_rx task");

@@ -29,6 +29,7 @@ idf_component_register(
     PRIV_REQUIRES
         driver
         esp_driver_ledc
+        esp_driver_usb_serial_jtag
         esp_lcd
         cjson
         lvgl

@@ -136,19 +136,22 @@ static void reset_deadloop_effect(void) {
 static void check_sprite_image(void) {
     const char *fs_path = "/spiffs/sprite.png";
     const char *lv_path = "S:/spiffs/sprite.png";
+    const char *img_src = lv_path;
+    /* 序列帧路径需保持持久 (lv_img_set_src 保存的是指针) */
+    static char seq_lv_path[64];
     
     /* 检查是否处于序列帧模式 */
     const PetAnimConfig *cfg = pet_anim_get_config(current_state);
     if (cfg) {
         char seq_fs_path[64];
-        char seq_lv_path[64];
         snprintf(seq_fs_path, sizeof(seq_fs_path), "/spiffs/sprites/%s/frame_001.png", cfg->dir_name);
-        snprintf(seq_lv_path, sizeof(seq_lv_path), "S:/spiffs/sprites/%s/frame_001.png", cfg->dir_name);
 
         if (storage_file_exists(seq_fs_path)) {
+            snprintf(seq_lv_path, sizeof(seq_lv_path), "S:/spiffs/sprites/%s/frame_001.png", cfg->dir_name);
             lv_img_header_t header;
             if (lv_img_decoder_get_info(seq_lv_path, &header) == LV_RES_OK) {
                 ESP_LOGI(TAG, "Mode: Sequence frames (%s)", cfg->name);
+                img_src = seq_lv_path;  /* 初始指向小帧图, 避免解码整张精灵图 */
             } else {
                 ESP_LOGE(TAG, "Failed to decode frame_001 at %s", seq_lv_path);
             }
@@ -184,11 +187,11 @@ setup_viewport:
         lv_obj_align(viewport, LV_ALIGN_CENTER, 0, -20);
 
         pet_img = lv_img_create(viewport);
-        lv_img_set_src(pet_img, lv_path);
+        lv_img_set_src(pet_img, img_src);
         lv_img_set_zoom(pet_img, ZOOM_LEVEL);
         lv_obj_align(pet_img, LV_ALIGN_CENTER, 0, 0);
     } else {
-        lv_img_set_src(pet_img, lv_path);
+        lv_img_set_src(pet_img, img_src);
     }
     
     lv_obj_clear_flag(lv_obj_get_parent(pet_img), LV_OBJ_FLAG_HIDDEN);
@@ -220,8 +223,8 @@ static void anim_timer_cb(lv_timer_t *timer) {
     }
 
     if (pet_img && !lv_obj_has_flag(lv_obj_get_parent(pet_img), LV_OBJ_FLAG_HIDDEN)) {
-        char seq_fs_path[64];
-        char seq_lv_path[64];
+        static char seq_fs_path[64];
+        static char seq_lv_path[64];
         snprintf(seq_fs_path, sizeof(seq_fs_path), "/spiffs/sprites/%s/frame_%03d.png", cfg->dir_name, current_frame);
         snprintf(seq_lv_path, sizeof(seq_lv_path), "S:/spiffs/sprites/%s/frame_%03d.png", cfg->dir_name, current_frame);
 
@@ -342,6 +345,10 @@ void pet_ui_show(bool show) {
         lv_obj_add_flag(pet_page, LV_OBJ_FLAG_HIDDEN);
         if (anim_timer) lv_timer_pause(anim_timer);
     }
+}
+
+bool pet_ui_is_visible(void) {
+    return pet_page && !lv_obj_has_flag(pet_page, LV_OBJ_FLAG_HIDDEN);
 }
 
 void pet_ui_set_state(PetAnimState state) {

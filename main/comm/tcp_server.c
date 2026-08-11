@@ -15,6 +15,9 @@ static uint8_t s_rx_buffer[1024];
 static char s_line_buffer[1025];
 static char s_addr_str[128];
 
+/* 当前进行 TCP 上传的连接 socket (用于 upload 完成回调回传 finished) */
+static int s_upload_sock = -1;
+
 static int send_all(int sock, const char *data, size_t len) {
     size_t sent = 0;
     while (sent < len) {
@@ -37,6 +40,13 @@ static void tcp_send_error(int sock, const char *msg_text) {
     char msg[96];
     int len = snprintf(msg, sizeof(msg), "{\"type\":\"error\",\"msg\":\"%s\"}\n", msg_text);
     if (len > 0) send_all(sock, msg, (size_t)len);
+}
+
+/* 上传完成回调: 文件落盘后由 uart_comm 触发, 立即回传 finished */
+static void tcp_upload_done_handler(void) {
+    if (s_upload_sock >= 0) {
+        tcp_send_event(s_upload_sock, "upload", "finished");
+    }
 }
 
 static bool is_upload_command(const char *line) {
@@ -102,6 +112,10 @@ static void tcp_server_task(void *pvParameters) {
             }
             ESP_LOGI(TAG, "Socket accepted ip address: %s", s_addr_str);
 
+            /* 关闭 Nagle, 让 ready/finished 等事件立即发出 */
+            int nodelay = 1;
+            setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
+
             bool tcp_upload = false;
             int len;
             do {
@@ -118,14 +132,17 @@ static void tcp_server_task(void *pvParameters) {
                             tcp_send_error(sock, "file write error");
                             break;
                         }
-                        if (!comm_is_uploading()) {
-                            tcp_send_event(sock, "upload", "finished");
-                            tcp_upload = false;
-                        }
+                        /* finished 由 comm_finish_upload 内的回调发送 */
                     } else {
                         /* 解析 JSON 命令 */
                         memcpy(s_line_buffer, s_rx_buffer, (size_t)len);
                         s_line_buffer[len] = '\0';
+
+                        /* 首个换行之后的字节可能是 upload 二进制数据 (防 TCP 粘包丢数据) */
+                        char *first_nl = strchr(s_line_buffer, '\n');
+                        size_t bin_off = first_nl ? (size_t)(first_nl - s_line_buffer) + 1 : (size_t)len;
+                        bool upload_triggered = false;
+
                         char *line = strtok(s_line_buffer, "\n");
                         while (line != NULL) {
                             char *cr = strchr(line, '\r');
@@ -136,18 +153,32 @@ static void tcp_server_task(void *pvParameters) {
                                 if (upload_cmd) {
                                     if (comm_is_uploading()) {
                                         tcp_upload = true;
+                                        upload_triggered = true;
+                                        s_upload_sock = sock;
                                         tcp_send_event(sock, "upload", "ready");
                                     } else {
                                         tcp_send_error(sock, "upload start failed");
                                     }
+                                    /* 上传开始后, 剩余字节全部为二进制, 停止行解析 */
+                                    break;
                                 }
                             }
                             line = strtok(NULL, "\n");
+                        }
+
+                        /* 换行之后的字节写回上传文件 (避免与 JSON 同包到达时丢失) */
+                        if (upload_triggered && tcp_upload && comm_is_uploading() && bin_off < (size_t)len) {
+                            size_t remain = (size_t)len - bin_off;
+                            size_t written = comm_write_upload_data((const uint8_t *)(s_line_buffer + bin_off), remain);
+                            if (written < remain && comm_is_uploading()) {
+                                tcp_send_error(sock, "file write error");
+                            }
                         }
                     }
                 }
             } while (len > 0);
 
+            if (s_upload_sock == sock) s_upload_sock = -1;
             shutdown(sock, 0);
             close(sock);
         }
@@ -158,5 +189,6 @@ static void tcp_server_task(void *pvParameters) {
 }
 
 void tcp_server_init(void) {
+    comm_set_upload_done_cb(tcp_upload_done_handler);
     xTaskCreate(tcp_server_task, "tcp_server", TCP_SERVER_STACK_SIZE, NULL, 5, NULL);
 }

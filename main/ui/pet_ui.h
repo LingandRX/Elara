@@ -25,6 +25,12 @@ void pet_ui_init(void);
 void pet_ui_show(bool show);
 
 /**
+ * 查询 Petdex 页面当前是否可见
+ * @return true=可见
+ */
+bool pet_ui_is_visible(void);
+
+/**
  * 刷新 Petdex 精灵图缓存
  */
 void pet_ui_refresh(void);
