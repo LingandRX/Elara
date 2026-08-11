@@ -52,4 +52,9 @@ void uart_rx_task(void *pvParam);
 // 解析通用命令（暴露给 TCP 等其他模块使用）
 void comm_parse_cmd(const char *line);
 
+// 上传完成回调（文件已落盘时触发，用于 TCP 立即回传 finished，
+// 避免被控制台 printf 阻塞拖住）
+typedef void (*comm_upload_done_cb_t)(void);
+void comm_set_upload_done_cb(comm_upload_done_cb_t cb);
+
 #endif

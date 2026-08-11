@@ -8,33 +8,33 @@ Elara 上位机客户端
 
 用法示例:
     # 交互式 (TCP)
-    python elara_host.py --host 192.168.1.100
+    python elara_host.py --host 192.168.2.155
 
     # 单条命令 (TCP)
-    python elara_host.py --host 192.168.1.100 status --state idle
-    python elara_host.py --host 192.168.1.100 chat --role ai --text "你好"
-    python elara_host.py --host 192.168.1.100 clear
-    python elara_host.py --host 192.168.1.100 progress --value 50
-    python elara_host.py --host 192.168.1.100 petdex --state "run right"
-    python elara_host.py --host 192.168.1.100 name --value "Pixel"
-    python elara_host.py --host 192.168.1.100 owner --value "Alex"
-    python elara_host.py --host 192.168.1.100 snap
-    python elara_host.py --host 192.168.1.100 snap
+    python elara_host.py --host 192.168.2.155 status --state idle
+    python elara_host.py --host 192.168.2.155 chat --role ai --text "你好"
+    python elara_host.py --host 192.168.2.155 clear
+    python elara_host.py --host 192.168.2.155 progress --value 50
+    python elara_host.py --host 192.168.2.155 petdex --state "run right"
+    python elara_host.py --host 192.168.2.155 name --value "Pixel"
+    python elara_host.py --host 192.168.2.155 owner --value "Alex"
+    python elara_host.py --host 192.168.2.155 snap
+    python elara_host.py --host 192.168.2.155 snap
 
     # 串口 (115200, USB-Serial/JTAG)
     python elara_host.py --serial COM5 status --state idle
     python elara_host.py --serial /dev/tty.usbmodem0 chat --role user --text "hi"
 
     # 流式分片消息
-    python elara_host.py --host 192.168.1.100 chat --role ai --text "你好" --chunk --seq 0
-    python elara_host.py --host 192.168.1.100 chat --role ai --text "，我是" --chunk --seq 1
-    python elara_host.py --host 192.168.1.100 chat --role ai --text "Elara" --seq 2
+    python elara_host.py --host 192.168.2.155 chat --role ai --text "你好" --chunk --seq 0
+    python elara_host.py --host 192.168.2.155 chat --role ai --text "，我是" --chunk --seq 1
+    python elara_host.py --host 192.168.2.155 chat --role ai --text "Elara" --seq 2
 
     # 上传精灵图 (PNG)
-    python elara_host.py --host 192.168.1.100 upload --file sprite.png --path idle/frame_001.png
+    python elara_host.py --host 192.168.2.155 upload --file sprite.png --path idle/frame_001.png
 
     # 角色包传输 (base64 分块)
-    python elara_host.py --host 192.168.1.100 xfer --char pet --file idle/frame_001.png
+    python elara_host.py --host 192.168.2.155 xfer --char pet --file idle/frame_001.png
 """
 
 import argparse
@@ -72,11 +72,14 @@ class TcpTransport(Transport):
         """后台线程接收设备消息, 放入 self._messages 队列供主线程读取."""
         try:
             while self._alive:
-                data = self._sock.recv(4096)
+                try:
+                    data = self._sock.recv(4096)
+                except socket.timeout:
+                    continue
                 if not data:
                     break
                 self._buf += data
-        except (socket.timeout, OSError):
+        except OSError:
             pass
         self._alive = False
 
@@ -229,14 +232,30 @@ def upload_file(transport: Transport, filepath: str, path: str = None):
     req = {"type": "upload", "size": size}
     if path:
         req["path"] = path
-    resp = send_json(transport, req, label="upload")
-    ready = any(isinstance(m, dict) and m.get("type") == "event"
-                and m.get("source") == "upload" and m.get("action") == "ready"
-                for m in resp)
-    if not ready:
-        print("设备未就绪 (未收到 upload ready), 仍尝试发送...")
-    else:
+    payload = (json.dumps(req, ensure_ascii=False) + "\n").encode("utf-8")
+    transport.send(payload)
+    print(f">> upload {payload.decode('utf-8', errors='replace').strip()}")
+
+    def wait_upload_event(action, timeout=5.0):
+        """等待设备发送 upload 事件 (ready / finished)."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            for line in transport.drain(0.1):
+                try:
+                    m = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if m.get("type") == "error":
+                    print(f"!! 设备错误: {m.get('msg')}")
+                    sys.exit(1)
+                if m.get("type") == "event" and m.get("source") == "upload" and m.get("action") == action:
+                    return True
+        return False
+
+    if wait_upload_event("ready"):
         print(f"设备就绪, 开始发送 {size} 字节...")
+    else:
+        print("设备未就绪 (未收到 upload ready), 仍尝试发送...")
 
     with open(filepath, "rb") as f:
         while True:
@@ -247,9 +266,10 @@ def upload_file(transport: Transport, filepath: str, path: str = None):
             time.sleep(0.01)
 
     print("二进制数据发送完成, 等待设备确认...")
-    time.sleep(1.0)
-    for m in transport.drain(1.0):
-        print(format_msg(m))
+    if wait_upload_event("finished", timeout=10.0):
+        print("[EVT] upload finished")
+    else:
+        print("!! 未收到 upload finished, 上传可能未完成")
 
 
 def xfer_char_file(transport: Transport, char: str, filepath: str):
