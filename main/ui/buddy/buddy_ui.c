@@ -8,6 +8,7 @@
 #include "buddy_anim.h"
 #include "esp_log.h"
 #include "esp_system.h"
+#include "input/lvgl_touch.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -123,7 +124,7 @@ static BuddyOverlayCloseCb s_settings_close_cb = NULL;
 static BuddyOverlayCloseCb s_approval_close_cb = NULL;
 
 /* 前向声明 */
-static void info_gesture_cb(lv_event_t *e);
+static void info_nav_btn_cb(lv_event_t *e);
 
 /* ============ 菜单文本 ============ */
 static const char *s_menu_texts[BUDDY_MENU_MAX] = {
@@ -358,8 +359,6 @@ static void create_info_page(void) {
     lv_obj_align(s_info_page, LV_ALIGN_TOP_LEFT, 0, 0);
     lv_obj_clear_flag(s_info_page, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(s_info_page, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(s_info_page, LV_OBJ_FLAG_GESTURE_BUBBLE);
-    lv_obj_add_event_cb(s_info_page, info_gesture_cb, LV_EVENT_GESTURE, NULL);
 
     /* 标题栏 */
     lv_obj_t *title_bar = lv_obj_create(s_info_page);
@@ -381,19 +380,41 @@ static void create_info_page(void) {
     lv_obj_set_style_text_color(s_info_page_idx, COLOR_TEXT_DIM, 0);
     lv_obj_align(s_info_page_idx, LV_ALIGN_RIGHT_MID, -4, 0);
 
-    /* 内容区域 */
+    /* 内容区域 (禁止滚动, 避免拖动时被当作滚动) */
     s_info_content = lv_label_create(s_info_page);
     lv_obj_set_style_text_color(s_info_content, COLOR_TEXT, 0);
     lv_obj_set_style_text_font(s_info_content, LV_FONT_DEFAULT, 0);
     lv_label_set_long_mode(s_info_content, LV_LABEL_LONG_WRAP);
     lv_obj_set_size(s_info_content, SCREEN_W - 12, SCREEN_H - 56);
     lv_obj_align(s_info_content, LV_ALIGN_TOP_LEFT, 6, 38);
+    lv_obj_clear_flag(s_info_content, LV_OBJ_FLAG_SCROLLABLE);
 
-    /* 底部导航提示 */
-    lv_obj_t *hint = lv_label_create(s_info_page);
-    lv_label_set_text(hint, LV_SYMBOL_LEFT " prev        next " LV_SYMBOL_RIGHT);
-    lv_obj_set_style_text_color(hint, COLOR_TEXT_DIM, 0);
-    lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -4);
+    /* 底部导航按钮 (点击翻页, 滑动由驱动层检测) */
+    lv_obj_t *prev_btn = lv_obj_create(s_info_page);
+    lv_obj_set_size(prev_btn, 56, 24);
+    lv_obj_set_style_bg_color(prev_btn, COLOR_PANEL, 0);
+    lv_obj_set_style_border_width(prev_btn, 0, 0);
+    lv_obj_set_style_radius(prev_btn, 6, 0);
+    lv_obj_clear_flag(prev_btn, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(prev_btn, LV_ALIGN_BOTTOM_LEFT, 6, -4);
+    lv_obj_add_event_cb(prev_btn, info_nav_btn_cb, LV_EVENT_CLICKED, (void *)1);
+    lv_obj_t *prev_label = lv_label_create(prev_btn);
+    lv_label_set_text(prev_label, LV_SYMBOL_LEFT " prev");
+    lv_obj_set_style_text_color(prev_label, COLOR_TEXT, 0);
+    lv_obj_center(prev_label);
+
+    lv_obj_t *next_btn = lv_obj_create(s_info_page);
+    lv_obj_set_size(next_btn, 56, 24);
+    lv_obj_set_style_bg_color(next_btn, COLOR_PANEL, 0);
+    lv_obj_set_style_border_width(next_btn, 0, 0);
+    lv_obj_set_style_radius(next_btn, 6, 0);
+    lv_obj_clear_flag(next_btn, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(next_btn, LV_ALIGN_BOTTOM_RIGHT, -6, -4);
+    lv_obj_add_event_cb(next_btn, info_nav_btn_cb, LV_EVENT_CLICKED, (void *)2);
+    lv_obj_t *next_label = lv_label_create(next_btn);
+    lv_label_set_text(next_label, "next " LV_SYMBOL_RIGHT);
+    lv_obj_set_style_text_color(next_label, COLOR_TEXT, 0);
+    lv_obj_center(next_label);
 }
 
 static void update_info_content(void) {
@@ -540,15 +561,26 @@ static void overlay_click_close_cb(lv_event_t *e) {
     }
 }
 
-/* ============ INFO 页面滑动手势 ============ */
+/* ============ INFO 页面滑动 ============ */
 
-static void info_gesture_cb(lv_event_t *e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code != LV_EVENT_GESTURE) return;
-    lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_get_act());
+/* 驱动层滑动检测回调 (绕过 LVGL 手势系统, 见 lvgl_touch.c) */
+static void info_swipe_cb(lv_dir_t dir) {
+    if (s_mode != BUDDY_MODE_INFO) return;  /* 仅 Info 页面响应滑动 */
     if (dir == LV_DIR_RIGHT) {
         buddy_ui_info_prev();
     } else if (dir == LV_DIR_LEFT) {
+        buddy_ui_info_next();
+    }
+}
+
+/* 底部 prev/next 按钮点击回调 */
+static void info_nav_btn_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_CLICKED) return;
+    intptr_t which = (intptr_t)lv_event_get_user_data(e);
+    if (which == 1) {
+        buddy_ui_info_prev();
+    } else if (which == 2) {
         buddy_ui_info_next();
     }
 }
@@ -841,6 +873,9 @@ void buddy_ui_init(void) {
     create_menu_overlay();
     create_settings_overlay();
     create_approval_overlay();
+
+    /* 注册驱动层滑动检测回调 (Info 页面左右滑动翻页) */
+    lvgl_touch_set_swipe_cb(info_swipe_cb);
 
     /* 初始化显示 */
     switch_mode_pages();

@@ -23,6 +23,18 @@ void lvgl_touch_init(void);
  */
 lv_indev_t *lvgl_get_touch_indev(void);
 
+/**
+ * 滑动方向回调 (驱动层检测, 不依赖 LVGL 手势系统)
+ * @param dir LV_DIR_LEFT/RIGHT/TOP/BOTTOM
+ */
+typedef void (*lvgl_touch_swipe_cb_t)(lv_dir_t dir);
+
+/**
+ * 注册滑动方向回调
+ * @param cb 回调, 可为 NULL 取消
+ */
+void lvgl_touch_set_swipe_cb(lvgl_touch_swipe_cb_t cb);
+
 #ifdef __cplusplus
 }
 #endif
