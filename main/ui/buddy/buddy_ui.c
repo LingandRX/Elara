@@ -111,7 +111,7 @@ static int s_pet_level = 1;
 /* 设置状态 */
 static int  s_brightness_pct = 80;
 static bool s_set_sound = true;
-static bool s_set_wifi = false;
+static bool s_set_wifi = true;
 static bool s_set_led = true;
 static bool s_set_hud = true;
 static bool s_set_rotate = false;

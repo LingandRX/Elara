@@ -428,6 +428,8 @@ static void execute_settings_action(BuddySettingItem item) {
         set->wifi = !set->wifi;
         buddy_ui_settings_set_toggle(BUDDY_SET_WIFI, set->wifi);
         buddy_settings_save();
+        /* 立即启停 Wi-Fi */
+        wifi_manager_set_enabled(set->wifi);
         break;
     }
     case BUDDY_SET_LED: {
@@ -678,12 +680,21 @@ void app_main(void) {
     task_ret = xTaskCreate(cmd_process_task, "cmd_proc", 3072, NULL, 5, NULL);
     if (task_ret != pdPASS) ESP_LOGE(TAG, "Failed to create cmd_proc task");
 
-    /* 8. 应用设置 */
+    /* 8. 应用设置（同步到 UI 显示，与 NVS 配置保持一致） */
     BuddySettings *set = buddy_settings_get();
+    buddy_ui_settings_set_toggle(BUDDY_SET_SOUND, set->sound);
+    buddy_ui_settings_set_toggle(BUDDY_SET_WIFI, set->wifi);
+    buddy_ui_settings_set_toggle(BUDDY_SET_LED, set->led);
+    buddy_ui_settings_set_toggle(BUDDY_SET_HUD, set->hud);
     buddy_ui_settings_set_toggle(BUDDY_SET_AUTO_SLEEP, set->auto_sleep);
 
-    /* 8.5 启动 WiFi 与 TCP Server（上位机网络通信，强制开启） */
+    /* 8.5 启动 WiFi 与 TCP Server（上位机网络通信，根据设置决定是否启用 WiFi） */
     wifi_manager_init();
+    if (set->wifi) {
+        wifi_manager_set_enabled(true);
+    } else {
+        ESP_LOGI(TAG, "Wi-Fi disabled by settings");
+    }
     tcp_server_init();
 
     /* 10. 应用亮度（禁用 backlight_manager 的自动休眠，由 buddy_main_task 统一管理） */
