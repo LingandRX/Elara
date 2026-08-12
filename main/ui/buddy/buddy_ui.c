@@ -123,6 +123,15 @@ static BuddyOverlayCloseCb s_menu_close_cb = NULL;
 static BuddyOverlayCloseCb s_settings_close_cb = NULL;
 static BuddyOverlayCloseCb s_approval_close_cb = NULL;
 
+/* 菜单项点击动作回调 */
+static BuddyMenuActionCb s_menu_action_cb = NULL;
+
+/* 设置项点击动作回调 */
+static BuddySettingActionCb s_settings_action_cb = NULL;
+
+/* 审批按钮点击动作回调 */
+static BuddyApprovalActionCb s_approval_action_cb = NULL;
+
 /* 前向声明 */
 static void info_nav_btn_cb(lv_event_t *e);
 
@@ -599,6 +608,10 @@ static void menu_event_cb(lv_event_t *e) {
             for (int j = 0; j < BUDDY_MENU_MAX; j++) {
                 lv_obj_set_style_bg_color(s_menu_items[j], (j == i) ? COLOR_HOT : COLOR_PANEL, 0);
             }
+            /* 触发菜单动作（进入对应子菜单） */
+            if (s_menu_action_cb) {
+                s_menu_action_cb((BuddyMenuItem)i);
+            }
             break;
         }
     }
@@ -671,6 +684,10 @@ static void settings_event_cb(lv_event_t *e) {
             ESP_LOGI(TAG, "Settings clicked: %d", i);
             for (int j = 0; j < BUDDY_SET_MAX; j++) {
                 lv_obj_set_style_bg_color(s_setting_items[j], (j == i) ? COLOR_HOT : COLOR_PANEL, 0);
+            }
+            /* 触发设置动作（执行对应功能） */
+            if (s_settings_action_cb) {
+                s_settings_action_cb((BuddySettingItem)i);
             }
             break;
         }
@@ -755,10 +772,12 @@ static void approval_btn_cb(lv_event_t *e) {
     lv_obj_t *target = lv_event_get_target(e);
     if (target == s_btn_approve) {
         ESP_LOGI(TAG, "Approval: APPROVED");
-        buddy_ui_hide_approval();
+        /* 触发审批动作（发送批准命令） */
+        if (s_approval_action_cb) s_approval_action_cb(true);
     } else if (target == s_btn_reject) {
         ESP_LOGI(TAG, "Approval: REJECTED");
-        buddy_ui_hide_approval();
+        /* 触发审批动作（发送拒绝命令） */
+        if (s_approval_action_cb) s_approval_action_cb(false);
     }
 }
 
@@ -846,6 +865,18 @@ void buddy_ui_set_overlay_close_cb(BuddyOverlayCloseCb menu_cb,
     s_menu_close_cb = menu_cb;
     s_settings_close_cb = settings_cb;
     s_approval_close_cb = approval_cb;
+}
+
+void buddy_ui_set_menu_action_cb(BuddyMenuActionCb cb) {
+    s_menu_action_cb = cb;
+}
+
+void buddy_ui_set_settings_action_cb(BuddySettingActionCb cb) {
+    s_settings_action_cb = cb;
+}
+
+void buddy_ui_set_approval_action_cb(BuddyApprovalActionCb cb) {
+    s_approval_action_cb = cb;
 }
 
 /* ============ 初始化 ============ */
