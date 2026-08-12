@@ -27,6 +27,7 @@
 #include "ui/pet_ui.h"
 #include "comm/uart_comm.h"
 #include "comm/tcp_server.h"
+#include "comm/sntp_sync.h"
 #include "wifi_manager.h"
 #include "storage_manager.h"
 #include "buddy/buddy_state.h"
@@ -135,6 +136,10 @@ static void beep(uint16_t freq, uint16_t dur) {
 
 /* 时间同步更新 UI */
 static void update_clock(void) {
+    /* SNTP 网络时间同步成功后，标记 RTC 有效（启用时钟模式） */
+    if (sntp_sync_is_synced() && !buddy_rtc_valid()) {
+        buddy_set_rtc_valid(true);
+    }
     int h = 0, m = 0, s = 0;
     if (buddy_get_local_time(&h, &m, &s, NULL, NULL, NULL, NULL)) {
         buddy_ui_set_clock(h, m, s);

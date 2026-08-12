@@ -12,6 +12,7 @@ idf_component_register(
         "ui/buddy/buddy_anim.c"
         "comm/uart_comm.c"
         "comm/tcp_server.c"
+        "comm/sntp_sync.c"
         "comm/xfer.c"
         "battery/battery_monitor.c"
         "input/lvgl_touch.c"
@@ -38,6 +39,7 @@ idf_component_register(
         esp_wifi
         nvs_flash
         esp_netif
+        lwip
         littlefs
         mbedtls
         esp_adc
