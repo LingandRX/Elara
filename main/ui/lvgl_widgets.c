@@ -109,6 +109,14 @@ lv_obj_t *lvgl_create_status_indicator(lv_obj_t *parent, const char *state, lv_c
 }
 
 /**
+ * 动画执行回调：设置对象透明度
+ * 适配 lv_anim_exec_xcb_t 签名，避免对 lv_obj_set_style_opa 做不兼容强制转换
+ */
+static void anim_set_opa_exec_cb(void *var, int32_t value) {
+    lv_obj_set_style_opa((lv_obj_t *)var, (lv_opa_t)value, 0);
+}
+
+/**
  * 创建动画标签
  */
 lv_obj_t *lvgl_create_animated_label(lv_obj_t *parent, const char *text) {
@@ -125,7 +133,7 @@ lv_obj_t *lvgl_create_animated_label(lv_obj_t *parent, const char *text) {
     lv_anim_set_var(&a, label);
     lv_anim_set_values(&a, LV_OPA_TRANSP, LV_OPA_COVER);
     lv_anim_set_time(&a, 300);
-    lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_style_opa);
+    lv_anim_set_exec_cb(&a, anim_set_opa_exec_cb);
     lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
     lv_anim_start(&a);
 
