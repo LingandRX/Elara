@@ -64,6 +64,15 @@ typedef enum {
 /* ============ 外部状态同步回调 ============ */
 typedef void (*BuddyOverlayCloseCb)(void);
 
+/* 菜单项点击动作回调（触摸点击菜单项时触发，用于进入子菜单） */
+typedef void (*BuddyMenuActionCb)(BuddyMenuItem item);
+
+/* 设置项点击动作回调（触摸点击设置项时触发，用于执行对应动作） */
+typedef void (*BuddySettingActionCb)(BuddySettingItem item);
+
+/* 审批按钮点击动作回调（触摸点击审批按钮时触发；approve=true 批准 / false 拒绝） */
+typedef void (*BuddyApprovalActionCb)(bool approve);
+
 /**
  * 注册覆盖层点击外部时的关闭回调
  * 用于同步 main.c 中的 BuddyUIState 状态
@@ -71,6 +80,24 @@ typedef void (*BuddyOverlayCloseCb)(void);
 void buddy_ui_set_overlay_close_cb(BuddyOverlayCloseCb menu_cb,
                                     BuddyOverlayCloseCb settings_cb,
                                     BuddyOverlayCloseCb approval_cb);
+
+/**
+ * 注册菜单项点击动作回调
+ * 触摸点击菜单项时触发，用于执行对应动作（进入子菜单）
+ */
+void buddy_ui_set_menu_action_cb(BuddyMenuActionCb cb);
+
+/**
+ * 注册设置项点击动作回调
+ * 触摸点击设置项时触发，用于执行对应动作
+ */
+void buddy_ui_set_settings_action_cb(BuddySettingActionCb cb);
+
+/**
+ * 注册审批按钮点击动作回调
+ * 触摸点击审批弹窗的 OK/NO 按钮时触发
+ */
+void buddy_ui_set_approval_action_cb(BuddyApprovalActionCb cb);
 
 /* ============ 初始化与显示 ============ */
 

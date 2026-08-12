@@ -347,6 +347,187 @@ static void buddy_main_loop(void) {
 static uint8_t bk_last_level = 1;
 static uint32_t bk_press_start_ms = 0;
 
+/* 执行菜单项动作（进入对应子菜单）
+ * 由 BOOT 键短按确认和触摸点击菜单项共同触发 */
+static void execute_menu_action(BuddyMenuItem item) {
+    BuddyUIState *ui = buddy_get_ui_state();
+    BuddyRuntime *rt = buddy_get_runtime();
+
+    ui->menu_open = false;
+    buddy_ui_show_menu(false);
+
+    switch (item) {
+    case BUDDY_MENU_SETTINGS:
+        ui->settings_open = true;
+        ui->settings_sel = 0;
+        buddy_ui_show_settings(true);
+        buddy_ui_settings_select(BUDDY_SET_BRIGHTNESS);
+        break;
+    case BUDDY_MENU_SHUTDOWN:
+        ESP_LOGI(TAG, "Shutdown requested");
+        backlight_set_on(false);
+        rt->screen_off = true;
+        esp_sleep_enable_ext0_wakeup(BOOT_KEY_PIN, 0);
+        esp_deep_sleep_start();
+        break;
+    case BUDDY_MENU_HELP:
+        buddy_ui_set_hud_text("Short=nav  Long=back");
+        buddy_ui_set_hud_visible(true);
+        break;
+    case BUDDY_MENU_ABOUT:
+        ui->display_mode = DISP_INFO;
+        ui->info_page = INFO_PAGE_ABOUT;
+        buddy_ui_set_mode(BUDDY_MODE_INFO);
+        buddy_ui_set_info_page(INFO_PAGE_ABOUT);
+        break;
+    case BUDDY_MENU_DEMO:
+        buddy_set_demo(!buddy_is_demo());
+        buddy_ui_set_hud_text(buddy_is_demo() ? "Demo ON" : "Demo OFF");
+        buddy_ui_set_hud_visible(true);
+        buddy_anim_invalidate();
+        break;
+    case BUDDY_MENU_CLOSE:
+    default:
+        buddy_anim_invalidate();
+        break;
+    }
+}
+
+/* 触摸点击菜单项回调（运行于 LVGL 锁内） */
+static void on_menu_action(BuddyMenuItem item) {
+    BuddyUIState *ui = buddy_get_ui_state();
+    /* 同步选中状态，保持与物理按键导航一致 */
+    ui->menu_sel = (uint8_t)item;
+    /* LVGL 事件回调已持有 LVGL 锁，直接执行动作 */
+    execute_menu_action(item);
+}
+
+/* 执行设置项动作（切换开关/调节亮度/进入 Reset/返回）
+ * 由 BOOT 键长按确认和触摸点击设置项共同触发 */
+static void execute_settings_action(BuddySettingItem item) {
+    BuddyUIState *ui = buddy_get_ui_state();
+
+    switch (item) {
+    case BUDDY_SET_BRIGHTNESS: {
+        ui->bright_level = (ui->bright_level + 1) % 5;
+        apply_brightness();
+        buddy_ui_settings_set_brightness(ui->bright_level * 25);
+        beep(1800, 30);
+        break;
+    }
+    case BUDDY_SET_SOUND: {
+        BuddySettings *set = buddy_settings_get();
+        set->sound = !set->sound;
+        buddy_ui_settings_set_toggle(BUDDY_SET_SOUND, set->sound);
+        if (set->sound) beep(2000, 50);
+        buddy_settings_save();
+        break;
+    }
+    case BUDDY_SET_WIFI: {
+        BuddySettings *set = buddy_settings_get();
+        set->wifi = !set->wifi;
+        buddy_ui_settings_set_toggle(BUDDY_SET_WIFI, set->wifi);
+        buddy_settings_save();
+        break;
+    }
+    case BUDDY_SET_LED: {
+        BuddySettings *set = buddy_settings_get();
+        set->led = !set->led;
+        buddy_ui_settings_set_toggle(BUDDY_SET_LED, set->led);
+        buddy_settings_save();
+        break;
+    }
+    case BUDDY_SET_HUD: {
+        BuddySettings *set = buddy_settings_get();
+        set->hud = !set->hud;
+        buddy_ui_settings_set_toggle(BUDDY_SET_HUD, set->hud);
+        buddy_ui_set_hud_visible(set->hud);
+        buddy_settings_save();
+        break;
+    }
+    case BUDDY_SET_ROTATE: {
+        BuddySettings *set = buddy_settings_get();
+        set->clock_rot = (set->clock_rot + 1) % 3;
+        buddy_settings_save();
+        beep(1800, 30);
+        break;
+    }
+    case BUDDY_SET_ASCII: {
+        ui->buddy_mode = !ui->buddy_mode;
+        buddy_ui_settings_set_toggle(BUDDY_SET_ASCII, ui->buddy_mode);
+        if (ui->buddy_mode) buddy_anim_set_species_idx(0);
+        break;
+    }
+    case BUDDY_SET_AUTO_SLEEP: {
+        BuddySettings *set = buddy_settings_get();
+        set->auto_sleep = !set->auto_sleep;
+        buddy_ui_settings_set_toggle(BUDDY_SET_AUTO_SLEEP, set->auto_sleep);
+        buddy_settings_save();
+        beep(1800, 30);
+        break;
+    }
+    case BUDDY_SET_RESET: {
+        ui->settings_open = false;
+        buddy_ui_show_settings(false);
+        ui->reset_open = true;
+        ui->reset_sel = 0;
+        ui->reset_confirm_idx = 0xFF;
+        break;
+    }
+    case BUDDY_SET_BACK: {
+        ui->settings_open = false;
+        buddy_ui_show_settings(false);
+        buddy_anim_invalidate();
+        break;
+    }
+    default: break;
+    }
+}
+
+/* 触摸点击设置项回调（运行于 LVGL 锁内） */
+static void on_settings_action(BuddySettingItem item) {
+    BuddyUIState *ui = buddy_get_ui_state();
+    /* 同步选中状态，保持与物理按键导航一致 */
+    ui->settings_sel = (uint8_t)item;
+    /* LVGL 事件回调已持有 LVGL 锁，直接执行动作 */
+    execute_settings_action(item);
+}
+
+/* 执行审批动作（批准/拒绝）
+ * 由 BOOT 键（短按=批准 / 长按=拒绝）和触摸点击审批按钮共同触发 */
+static void execute_approval_action(bool approve) {
+    BuddyRuntime *rt = buddy_get_runtime();
+    if (!buddy_has_pending_prompt()) {
+        /* 无待审批项，仅关闭弹窗 */
+        buddy_ui_hide_approval();
+        return;
+    }
+    char cmd[96];
+    snprintf(cmd, sizeof(cmd),
+             "{\"cmd\":\"permission\",\"id\":\"%s\",\"decision\":\"%s\"}",
+             buddy_get_claude_state()->prompt_id, approve ? "once" : "deny");
+    send_cmd(cmd);
+    rt->response_sent = true;
+    if (approve) {
+        uint32_t now_ms = esp_timer_get_time() / 1000;
+        uint32_t took_s = (now_ms - rt->prompt_arrived_ms) / 1000;
+        buddy_stats_on_approval(took_s);
+        beep(2400, 60);
+        if (took_s < 5) buddy_trigger_oneshot(PERSONA_HEART, 2000);
+    } else {
+        buddy_stats_on_denial();
+        beep(1000, 80);
+        buddy_trigger_oneshot(PERSONA_DIZZY, 2000);
+    }
+    buddy_ui_hide_approval();
+}
+
+/* 触摸点击审批按钮回调（运行于 LVGL 锁内） */
+static void on_approval_action(bool approve) {
+    /* LVGL 事件回调已持有 LVGL 锁，直接执行动作 */
+    execute_approval_action(approve);
+}
+
 static void process_boot_key(void) {
     BuddyUIState *ui = buddy_get_ui_state();
     BuddyRuntime *rt = buddy_get_runtime();
@@ -381,94 +562,11 @@ static void process_boot_key(void) {
             /* 长按 */
             beep(800, 60);
             if (buddy_has_pending_prompt()) {
-                char cmd[96];
-                snprintf(cmd, sizeof(cmd),
-                         "{\"cmd\":\"permission\",\"id\":\"%s\",\"decision\":\"deny\"}",
-                         buddy_get_claude_state()->prompt_id);
-                send_cmd(cmd);
-                rt->response_sent = true;
-                buddy_stats_on_denial();
-                beep(1000, 80);
-                buddy_trigger_oneshot(PERSONA_DIZZY, 2000);
-                buddy_ui_hide_approval();
+                execute_approval_action(false);
             } else if (ui->reset_open) {
                 ui->reset_open = false;
             } else if (ui->settings_open) {
-                switch ((BuddySettingItem)ui->settings_sel) {
-                case BUDDY_SET_BRIGHTNESS: {
-                    ui->bright_level = (ui->bright_level + 1) % 5;
-                    apply_brightness();
-                    buddy_ui_settings_set_brightness(ui->bright_level * 25);
-                    beep(1800, 30);
-                    break;
-                }
-                case BUDDY_SET_SOUND: {
-                    BuddySettings *set = buddy_settings_get();
-                    set->sound = !set->sound;
-                    buddy_ui_settings_set_toggle(BUDDY_SET_SOUND, set->sound);
-                    if (set->sound) beep(2000, 50);
-                    buddy_settings_save();
-                    break;
-                }
-                case BUDDY_SET_WIFI: {
-                    BuddySettings *set = buddy_settings_get();
-                    set->wifi = !set->wifi;
-                    buddy_ui_settings_set_toggle(BUDDY_SET_WIFI, set->wifi);
-                    buddy_settings_save();
-                    break;
-                }
-                case BUDDY_SET_LED: {
-                    BuddySettings *set = buddy_settings_get();
-                    set->led = !set->led;
-                    buddy_ui_settings_set_toggle(BUDDY_SET_LED, set->led);
-                    buddy_settings_save();
-                    break;
-                }
-                case BUDDY_SET_HUD: {
-                    BuddySettings *set = buddy_settings_get();
-                    set->hud = !set->hud;
-                    buddy_ui_settings_set_toggle(BUDDY_SET_HUD, set->hud);
-                    buddy_ui_set_hud_visible(set->hud);
-                    buddy_settings_save();
-                    break;
-                }
-                case BUDDY_SET_ROTATE: {
-                    BuddySettings *set = buddy_settings_get();
-                    set->clock_rot = (set->clock_rot + 1) % 3;
-                    buddy_settings_save();
-                    beep(1800, 30);
-                    break;
-                }
-                case BUDDY_SET_ASCII: {
-                    ui->buddy_mode = !ui->buddy_mode;
-                    buddy_ui_settings_set_toggle(BUDDY_SET_ASCII, ui->buddy_mode);
-                    if (ui->buddy_mode) buddy_anim_set_species_idx(0);
-                    break;
-                }
-                case BUDDY_SET_AUTO_SLEEP: {
-                    BuddySettings *set = buddy_settings_get();
-                    set->auto_sleep = !set->auto_sleep;
-                    buddy_ui_settings_set_toggle(BUDDY_SET_AUTO_SLEEP, set->auto_sleep);
-                    buddy_settings_save();
-                    beep(1800, 30);
-                    break;
-                }
-                case BUDDY_SET_RESET: {
-                    ui->settings_open = false;
-                    buddy_ui_show_settings(false);
-                    ui->reset_open = true;
-                    ui->reset_sel = 0;
-                    ui->reset_confirm_idx = 0xFF;
-                    break;
-                }
-                case BUDDY_SET_BACK: {
-                    ui->settings_open = false;
-                    buddy_ui_show_settings(false);
-                    buddy_anim_invalidate();
-                    break;
-                }
-                default: break;
-                }
+                execute_settings_action((BuddySettingItem)ui->settings_sel);
             } else if (ui->menu_open) {
                 ui->menu_open = false;
                 buddy_ui_show_menu(false);
@@ -482,17 +580,7 @@ static void process_boot_key(void) {
             /* 短按 */
             beep(1800, 30);
             if (buddy_has_pending_prompt()) {
-                char cmd[96];
-                snprintf(cmd, sizeof(cmd),
-                         "{\"cmd\":\"permission\",\"id\":\"%s\",\"decision\":\"once\"}",
-                         buddy_get_claude_state()->prompt_id);
-                send_cmd(cmd);
-                rt->response_sent = true;
-                uint32_t took_s = (now_ms - rt->prompt_arrived_ms) / 1000;
-                buddy_stats_on_approval(took_s);
-                beep(2400, 60);
-                if (took_s < 5) buddy_trigger_oneshot(PERSONA_HEART, 2000);
-                buddy_ui_hide_approval();
+                execute_approval_action(true);
             } else if (ui->reset_open) {
                 ui->reset_sel = (ui->reset_sel + 1) % 3;
                 ui->reset_confirm_idx = 0xFF;
@@ -500,53 +588,7 @@ static void process_boot_key(void) {
                 ui->settings_sel = (ui->settings_sel + 1) % BUDDY_SET_MAX;
                 buddy_ui_settings_select((BuddySettingItem)ui->settings_sel);
             } else if (ui->menu_open) {
-                switch ((BuddyMenuItem)ui->menu_sel) {
-                case BUDDY_MENU_SETTINGS:
-                    ui->menu_open = false;
-                    buddy_ui_show_menu(false);
-                    ui->settings_open = true;
-                    ui->settings_sel = 0;
-                    buddy_ui_show_settings(true);
-                    buddy_ui_settings_select(BUDDY_SET_BRIGHTNESS);
-                    break;
-                case BUDDY_MENU_SHUTDOWN:
-                    ui->menu_open = false;
-                    buddy_ui_show_menu(false);
-                    ESP_LOGI(TAG, "Shutdown requested");
-                    backlight_set_on(false);
-                    rt->screen_off = true;
-                    esp_sleep_enable_ext0_wakeup(BOOT_KEY_PIN, 0);
-                    esp_deep_sleep_start();
-                    break;
-                case BUDDY_MENU_HELP:
-                    ui->menu_open = false;
-                    buddy_ui_show_menu(false);
-                    buddy_ui_set_hud_text("Short=nav  Long=back");
-                    buddy_ui_set_hud_visible(true);
-                    break;
-                case BUDDY_MENU_ABOUT:
-                    ui->menu_open = false;
-                    buddy_ui_show_menu(false);
-                    ui->display_mode = DISP_INFO;
-                    ui->info_page = INFO_PAGE_ABOUT;
-                    buddy_ui_set_mode(BUDDY_MODE_INFO);
-                    buddy_ui_set_info_page(INFO_PAGE_ABOUT);
-                    break;
-                case BUDDY_MENU_DEMO:
-                    ui->menu_open = false;
-                    buddy_ui_show_menu(false);
-                    buddy_set_demo(!buddy_is_demo());
-                    buddy_ui_set_hud_text(buddy_is_demo() ? "Demo ON" : "Demo OFF");
-                    buddy_ui_set_hud_visible(true);
-                    buddy_anim_invalidate();
-                    break;
-                case BUDDY_MENU_CLOSE:
-                    ui->menu_open = false;
-                    buddy_ui_show_menu(false);
-                    buddy_anim_invalidate();
-                    break;
-                default: break;
-                }
+                execute_menu_action((BuddyMenuItem)ui->menu_sel);
             } else {
                 ui->display_mode = (ui->display_mode + 1) % DISP_COUNT;
                 if (ui->display_mode == DISP_NORMAL) buddy_ui_set_mode(BUDDY_MODE_NORMAL);
@@ -598,6 +640,9 @@ void app_main(void) {
     /* 3. 初始化 Buddy UI */
     buddy_ui_init();
     buddy_ui_set_overlay_close_cb(on_menu_closed, on_settings_closed, on_approval_closed);
+    buddy_ui_set_menu_action_cb(on_menu_action);
+    buddy_ui_set_settings_action_cb(on_settings_action);
+    buddy_ui_set_approval_action_cb(on_approval_action);
     buddy_ui_show(true);
 
     /* 4. 初始化存储 */
