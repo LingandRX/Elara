@@ -12,6 +12,8 @@ static const char *TAG = "WIFI_MGR";
 static char s_current_ip[16] = "";
 static int s_retry_count = 0;
 static TimerHandle_t s_retry_timer = NULL;
+static bool s_wifi_initialized = false;
+static bool s_wifi_enabled = false;
 
 #define WIFI_MAX_RETRY  5
 #define WIFI_RETRY_BASE_MS 1000
@@ -59,6 +61,10 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
 }
 
 void wifi_manager_init(void) {
+    /* esp_wifi_init 只能调用一次，此函数幂等 */
+    if (s_wifi_initialized) return;
+    s_wifi_initialized = true;
+
     ESP_LOGI(TAG, "Initializing Wi-Fi...");
 
     ESP_ERROR_CHECK(esp_netif_init());
@@ -101,7 +107,37 @@ void wifi_manager_init(void) {
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
-    ESP_ERROR_CHECK(esp_wifi_start());
+    /* 不在此处启动，由 wifi_manager_set_enabled() 根据设置控制 */
+}
+
+/**
+ * 根据设置启停 Wi-Fi（STA）
+ * @param enable true=启动并连接 / false=断开并停止
+ */
+void wifi_manager_set_enabled(bool enable) {
+    if (enable) {
+        if (!s_wifi_initialized) {
+            wifi_manager_init();
+        }
+        if (!s_wifi_enabled) {
+            esp_err_t err = esp_wifi_start();
+            if (err != ESP_OK) {
+                ESP_LOGE(TAG, "Failed to start Wi-Fi: %s", esp_err_to_name(err));
+                return;
+            }
+            s_wifi_enabled = true;
+            ESP_LOGI(TAG, "Wi-Fi enabled");
+        }
+    } else {
+        if (s_wifi_enabled) {
+            esp_wifi_disconnect();
+            esp_wifi_stop();
+            s_wifi_enabled = false;
+            s_current_ip[0] = '\0';
+            s_retry_count = 0;
+            ESP_LOGI(TAG, "Wi-Fi disabled");
+        }
+    }
 }
 
 void wifi_manager_set_config(const char *ssid, const char *password) {
