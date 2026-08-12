@@ -335,9 +335,28 @@ void buddy_send_cmd(const char *json) {
     uart_send_raw("\n", 1);
 }
 
-/* 获取当前本地时间（简化版，基于软件 RTC） */
+/* 获取当前本地时间
+ * 优先使用网络时间（SNTP 同步后的系统 RTC），回退到上位机同步的软件 RTC */
 bool buddy_get_local_time(int *hour, int *min, int *sec,
                           int *year, int *month, int *day, int *dow) {
+    /* 1) 系统时间有效（SNTP 已同步，time() 返回真实 epoch）
+     *    2020-09-13 (epoch 1600000000) 之后视为有效 */
+    time_t now = time(NULL);
+    if (now > 1600000000) {
+        struct tm lt;
+        localtime_r(&now, &lt);   /* 使用 TZ 设置的本地时区 */
+
+        if (hour)  *hour  = lt.tm_hour;
+        if (min)   *min   = lt.tm_min;
+        if (sec)   *sec   = lt.tm_sec;
+        if (year)  *year  = lt.tm_year + 1900;
+        if (month) *month = lt.tm_mon + 1;
+        if (day)   *day   = lt.tm_mday;
+        if (dow)   *dow   = lt.tm_wday;
+        return true;
+    }
+
+    /* 2) 回退：上位机同步的软件 RTC */
     if (!s_runtime.rtc_valid) return false;
 
     uint32_t now_ms = esp_timer_get_time() / 1000;

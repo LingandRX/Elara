@@ -1,4 +1,5 @@
 #include "wifi_manager.h"
+#include "comm/sntp_sync.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_log.h"
@@ -57,6 +58,8 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
         ESP_LOGI(TAG, "Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
         snprintf(s_current_ip, sizeof(s_current_ip), IPSTR, IP2STR(&event->ip_info.ip));
         s_retry_count = 0;
+        /* 联网成功，同步网络时间 */
+        sntp_sync_start();
     }
 }
 
