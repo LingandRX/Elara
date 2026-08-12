@@ -65,8 +65,7 @@ void backlight_manager_init(uint8_t default_brightness) {
         ESP_LOGE(TAG, "Failed to create fade timer");
     }
 
-    /* 设置初始亮度 */
-    if (default_brightness > 255) default_brightness = 255;
+    /* 设置初始亮度（uint8_t 天然限制在 0-255，无需越界判断） */
     bl_apply_raw(default_brightness);
     s_target_brightness = default_brightness;
     s_saved_brightness = default_brightness;
@@ -88,7 +87,7 @@ void backlight_set_brightness(uint8_t level) {
 
     xSemaphoreTake(s_bl_mux, portMAX_DELAY);
 
-    if (level > 255) level = 255;
+    /* level 为 uint8_t (0-255)，无需越界判断 */
     s_target_brightness = level;
 
     if (s_fade_enabled && s_fade_timer) {
