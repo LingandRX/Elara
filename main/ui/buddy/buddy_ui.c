@@ -50,6 +50,7 @@ static lv_obj_t *s_battery_label = NULL;
 
 /* PET 模式 */
 static lv_obj_t *s_pet_page = NULL;
+static lv_obj_t *s_pet_ascii_box = NULL;
 static lv_obj_t *s_pet_mood_label = NULL;
 static lv_obj_t *s_pet_mood_bar = NULL;
 static lv_obj_t *s_pet_fed_label = NULL;
@@ -117,7 +118,6 @@ static bool s_set_wifi = true;
 static bool s_set_led = true;
 static bool s_set_hud = true;
 static bool s_set_rotate = false;
-static bool s_set_ascii = false;
 static bool s_set_auto_sleep = false;
 
 /* 外部关闭回调 */
@@ -155,7 +155,7 @@ static const char *s_setting_texts[BUDDY_SET_MAX] = {
     LV_SYMBOL_BULLET    " LED",
     LV_SYMBOL_EYE_OPEN  " HUD",
     LV_SYMBOL_REFRESH   " Rotate",
-    LV_SYMBOL_FILE      " ASCII Pet",
+    LV_SYMBOL_FILE      " Pet",
     LV_SYMBOL_CHARGE    " Auto Sleep",
     LV_SYMBOL_TRASH     " Reset",
     LV_SYMBOL_LEFT      " Back",
@@ -336,20 +336,15 @@ static void create_pet_page(void) {
     y += ROW_H;
 
     /* ASCII Pet 预览区 */
-    lv_obj_t *ascii_box = lv_obj_create(s_pet_page);
-    lv_obj_set_size(ascii_box, SCREEN_W - 16, 90);
-    lv_obj_set_style_bg_color(ascii_box, COLOR_PANEL, 0);
-    lv_obj_set_style_border_width(ascii_box, 1, 0);
-    lv_obj_set_style_border_color(ascii_box, COLOR_TEXT_DIM, 0);
-    lv_obj_set_style_radius(ascii_box, 6, 0);
-    obj_set_pad_all(ascii_box, 4);
-    lv_obj_align(ascii_box, LV_ALIGN_TOP_MID, 0, y + 8);
-    lv_obj_clear_flag(ascii_box, LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t *ascii_title = lv_label_create(ascii_box);
-    lv_label_set_text(ascii_title, "~ ascii pet ~");
-    lv_obj_set_style_text_color(ascii_title, COLOR_TEXT_DIM, 0);
-    lv_obj_align(ascii_title, LV_ALIGN_TOP_MID, 0, 0);
+    s_pet_ascii_box = lv_obj_create(s_pet_page);
+    lv_obj_set_size(s_pet_ascii_box, SCREEN_W - 16, 90);
+    lv_obj_set_style_bg_color(s_pet_ascii_box, COLOR_PANEL, 0);
+    lv_obj_set_style_border_width(s_pet_ascii_box, 1, 0);
+    lv_obj_set_style_border_color(s_pet_ascii_box, COLOR_TEXT_DIM, 0);
+    lv_obj_set_style_radius(s_pet_ascii_box, 6, 0);
+    obj_set_pad_all(s_pet_ascii_box, 4);
+    lv_obj_align(s_pet_ascii_box, LV_ALIGN_TOP_MID, 0, y + 8);
+    lv_obj_clear_flag(s_pet_ascii_box, LV_OBJ_FLAG_SCROLLABLE);
 
     /* 底部提示 */
     lv_obj_t *hint = lv_label_create(s_pet_page);
@@ -774,7 +769,8 @@ static void create_settings_overlay(void) {
     buddy_ui_settings_set_toggle(BUDDY_SET_LED, s_set_led);
     buddy_ui_settings_set_toggle(BUDDY_SET_HUD, s_set_hud);
     buddy_ui_settings_set_toggle(BUDDY_SET_ROTATE, s_set_rotate);
-    buddy_ui_settings_set_toggle(BUDDY_SET_ASCII, s_set_ascii);
+    /* Pet 物种名在 buddy_anim_init 之后由 buddy_ui_settings_set_species() 同步 */
+    lv_label_set_text(s_setting_vals[BUDDY_SET_ASCII], "");
     buddy_ui_settings_set_toggle(BUDDY_SET_AUTO_SLEEP, s_set_auto_sleep);
     lv_label_set_text(s_setting_vals[BUDDY_SET_RESET], "");
     lv_label_set_text(s_setting_vals[BUDDY_SET_BACK], "");
@@ -1107,19 +1103,28 @@ void buddy_ui_settings_set_toggle(BuddySettingItem item, bool on) {
     case BUDDY_SET_LED:    s_set_led = on;    break;
     case BUDDY_SET_HUD:    s_set_hud = on;    break;
     case BUDDY_SET_ROTATE: s_set_rotate = on; break;
-    case BUDDY_SET_ASCII:  s_set_ascii = on;  break;
     case BUDDY_SET_AUTO_SLEEP: s_set_auto_sleep = on; break;
     default: break;
     }
     if (s_setting_vals[item]) {
         if (item == BUDDY_SET_BRIGHTNESS) {
             /* 亮度由单独函数处理 */
+        } else if (item == BUDDY_SET_ASCII) {
+            /* Pet 物种名由 buddy_ui_settings_set_species() 显示 */
         } else if (item == BUDDY_SET_RESET || item == BUDDY_SET_BACK) {
             lv_label_set_text(s_setting_vals[item], "");
         } else {
             lv_label_set_text(s_setting_vals[item], on ? "ON" : "OFF");
             lv_obj_set_style_text_color(s_setting_vals[item], on ? COLOR_GREEN : COLOR_RED, 0);
         }
+    }
+}
+
+/* 设置 Pet 物种显示（BUDDY_SET_ASCII 项：切换宠物角色而非开关） */
+void buddy_ui_settings_set_species(const char *name) {
+    if (s_setting_vals[BUDDY_SET_ASCII] && name) {
+        lv_label_set_text(s_setting_vals[BUDDY_SET_ASCII], name);
+        lv_obj_set_style_text_color(s_setting_vals[BUDDY_SET_ASCII], COLOR_HOT, 0);
     }
 }
 
@@ -1162,6 +1167,12 @@ void buddy_ui_anim_tick(uint32_t tick) {
     if (s_mode == BUDDY_MODE_NORMAL && s_anim_canvas) {
         /* 使用 buddy_anim 渲染到动画区域 */
         buddy_anim_render_to(s_anim_canvas, SCREEN_W / 2, ANIM_AREA_H / 2);
+    }
+
+    /* PET 页面 ASCII 宠物动画 */
+    if (s_mode == BUDDY_MODE_PET && s_pet_ascii_box) {
+        /* 使用 buddy_anim 渲染到 ASCII Pet 预览区 */
+        buddy_anim_render_to(s_pet_ascii_box, (SCREEN_W - 16) / 2, 45);
     }
 
     /* INFO-Claude 页实时刷新 (1Hz 节流, 主循环每帧调用) */
