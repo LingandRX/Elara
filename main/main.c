@@ -114,10 +114,8 @@ static void wake(void) {
     if (rt->screen_off) {
         rt->screen_off = false;
         rt->wake_transition_until_ms = rt->last_interact_ms + 12000;
-    }
-    if (rt->dimmed) {
+        /* 恢复背光到用户设置的亮度档位（自动休眠时是直接关屏） */
         apply_brightness();
-        rt->dimmed = false;
     }
 }
 
@@ -647,6 +645,8 @@ void app_main(void) {
     lv_extra_init();
     lv_port_disp_init(panel);
     lvgl_touch_init();
+    /* 触摸按下即视为用户交互：唤醒屏幕并重置空闲计时 */
+    lvgl_touch_set_press_cb(wake);
 
     /* 3. 初始化 Buddy UI */
     buddy_ui_init();

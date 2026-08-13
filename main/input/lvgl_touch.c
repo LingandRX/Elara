@@ -33,9 +33,14 @@ static uint16_t press_y = 0;
 static bool swiping = false;
 
 static lvgl_touch_swipe_cb_t swipe_cb = NULL;
+static lvgl_touch_press_cb_t press_cb = NULL;
 
 void lvgl_touch_set_swipe_cb(lvgl_touch_swipe_cb_t cb) {
     swipe_cb = cb;
+}
+
+void lvgl_touch_set_press_cb(lvgl_touch_press_cb_t cb) {
+    press_cb = cb;
 }
 
 /**
@@ -51,6 +56,8 @@ static void touch_read_cb(lv_indev_drv_t *indev_drv, lv_indev_data_t *data) {
             press_x = x;
             press_y = y;
             swiping = false;
+            /* 新触点按下：通知上层（唤醒屏幕/重置空闲计时） */
+            if (press_cb) press_cb();
         } else if (!swiping &&
                    (abs((int)x - press_x) > SWIPE_THRESHOLD ||
                     abs((int)y - press_y) > SWIPE_THRESHOLD)) {

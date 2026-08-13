@@ -7,6 +7,7 @@
 #include "pet_anim.h"
 #include "pet_ui.h"
 #include "display/backlight_manager.h"
+#include "buddy/buddy_stats.h"
 #include "esp_log.h"
 #include <string.h>
 #include <stdio.h>
@@ -302,7 +303,14 @@ static void bl_sleep_btn_cb(lv_event_t *e) {
     s_bl_sleep_timeout_s = (uint32_t)new_val;
     
     ESP_LOGI(TAG, "Setting auto sleep timeout to %lus", s_bl_sleep_timeout_s);
-    backlight_enable_auto_sleep(true, s_bl_sleep_timeout_s * 1000, 0);
+    /* 自动休眠统一由 main.c 主循环管理（基于 BuddySettings.auto_sleep，
+       阈值见 main.c 的 SCREEN_OFF_MS / CLOCK_OFF_MS_BAT）。
+       此处仅启用主循环的自动休眠并持久化；绝不可重新启用 backlight_manager
+       自带休眠，否则会出现两套休眠机制（阈值不同）互相冲突。 */
+    BuddySettings *set = buddy_settings_get();
+    set->auto_sleep = true;
+    buddy_settings_save();
+    backlight_enable_auto_sleep(false, 0, 0);
     bl_page_update_sleep_label();
 }
 
