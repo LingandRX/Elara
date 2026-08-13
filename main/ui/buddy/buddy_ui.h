@@ -173,13 +173,12 @@ bool buddy_ui_is_approval_visible(void);
 /* ============ PET 页面 ============ */
 
 /**
- * 设置宠物统计值
- * @param mood   心情 (0-100)
- * @param fed    饱食度 (0-100)
- * @param energy 能量 (0-100)
- * @param level  等级 (>=1)
+ * 设置 opencode Zen 套餐用量显示
+ * @param rolling  滚动窗口用量 (0-100)
+ * @param weekly   每周用量 (0-100)
+ * @param monthly  每月用量 (0-100)
  */
-void buddy_ui_set_pet_stats(int mood, int fed, int energy, int level);
+void buddy_ui_set_usage(int rolling, int weekly, int monthly);
 
 /* ============ INFO 页面 ============ */
 

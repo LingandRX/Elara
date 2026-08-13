@@ -84,6 +84,10 @@ static struct {
 void buddy_state_init(void) {
     memset(&s_claude, 0, sizeof(s_claude));
     memset(&s_runtime, 0, sizeof(s_runtime));
+    /* 用量初始为未知 (0xFF)，收到 usage 数据后更新 */
+    s_claude.usage_rolling = 0xFF;
+    s_claude.usage_weekly  = 0xFF;
+    s_claude.usage_monthly = 0xFF;
     s_runtime.base_state = PERSONA_SLEEP;
     s_runtime.active_state = PERSONA_SLEEP;
     ESP_LOGI(TAG, "Buddy state initialized");
@@ -211,6 +215,17 @@ static void apply_json(const char *line, ClaudeState *out) {
         out->n_lines = n;
     }
 
+    /* Zen 套餐用量: {"usage":{"rolling":0,"weekly":4,"monthly":2}} (0-100) */
+    cJSON *usage = cJSON_GetObjectItem(doc, "usage");
+    if (cJSON_IsObject(usage)) {
+        cJSON *ur = cJSON_GetObjectItem(usage, "rolling");
+        cJSON *uw = cJSON_GetObjectItem(usage, "weekly");
+        cJSON *um = cJSON_GetObjectItem(usage, "monthly");
+        if (cJSON_IsNumber(ur)) out->usage_rolling = (uint8_t)cJSON_GetNumberValue(ur);
+        if (cJSON_IsNumber(uw)) out->usage_weekly  = (uint8_t)cJSON_GetNumberValue(uw);
+        if (cJSON_IsNumber(um)) out->usage_monthly = (uint8_t)cJSON_GetNumberValue(um);
+    }
+
     /* 审批提示 */
     cJSON *prompt = cJSON_GetObjectItem(doc, "prompt");
     if (cJSON_IsObject(prompt)) {
@@ -287,6 +302,10 @@ void buddy_data_poll(ClaudeState *out) {
         out->tokens_today = f->tokens;
         out->last_updated_ms = now_ms;
         out->connected = true;
+        /* demo: 给用量字段模拟值，PET 页面有显示效果 */
+        out->usage_rolling = (uint8_t)(f->tokens / 1000 % 100);
+        out->usage_weekly  = (uint8_t)(f->tokens / 700 % 100);
+        out->usage_monthly = (uint8_t)(f->tokens / 1400 % 100);
         snprintf(out->msg, sizeof(out->msg), "demo: %s", f->name);
         return;
     }

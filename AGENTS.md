@@ -16,30 +16,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 触摸芯片: CST816T (I2C 地址 0x15, 单点触摸, 直接输出屏幕像素坐标 0~170/0~320)
 - UI 框架: LVGL v8.4.0 (通过组件管理器集成, `lvgl/lvgl: ^8.4.0`)
 
-## 构建命令
-
-### 直接使用 idf.py
-
-```bash
-# 设置目标芯片（仅首次）
-idf.py set-target esp32s3
-
-# 编译
-idf.py build
-
-# 烧录并监控（串口根据系统调整，Windows 为 COM5）
-idf.py -p /dev/tty.usbmodem* flash monitor
-
-# 仅烧录
-idf.py -p /dev/tty.usbmodem* flash
-
-# 清理构建产物
-idf.py fullclean
-
-# 菜单配置
-idf.py menuconfig
-```
-
 ## 架构
 
 **入口点**: `main/main.c` → `app_main()`

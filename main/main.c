@@ -200,6 +200,16 @@ static void buddy_main_loop(void) {
     /* 3. 推导基础状态 */
     rt->base_state = buddy_derive_state(claude);
 
+    /* 3.5 done (会话完成) → 触发 CELEBRATE one-shot，与升级庆祝一致。
+     * 否则 clocking 分支会立刻把 active_state 覆盖成时间节律的 sleep/idle，
+     * celebrate 的 ascii pet 永远显示不出来（recently_completed 是基础状态，
+     * 没有 oneshot 截止时间保护）。 */
+    static bool was_completed = false;
+    if (claude->recently_completed && !was_completed) {
+        buddy_trigger_oneshot(PERSONA_CELEBRATE, 4000);
+    }
+    was_completed = claude->recently_completed;
+
     /* 4. 唤醒过渡保护 */
     if (rt->base_state == PERSONA_IDLE &&
         (int32_t)(now_ms - rt->wake_transition_until_ms) < 0) {
@@ -239,10 +249,11 @@ static void buddy_main_loop(void) {
         buddy_ui_show_approval(claude->prompt_tool, claude->prompt_hint);
     }
 
-    /* 8. 推导 clocking 状态 */
-    bool clocking = claude->connected &&
-                    claude->sessions_running == 0 && claude->sessions_waiting == 0 &&
-                    buddy_rtc_valid();
+    /* 8. 推导 clocking 状态：仅在曾连接 opencode 但当前不在线时作为纯时钟；
+     *     在线时完全由 opencode 派生状态驱动（busy/done/idle/attention 均正常播放动画） */
+    bool clocking = buddy_rtc_valid() &&
+                    claude->connected &&          /* 曾与 opencode 配对 */
+                    !buddy_data_connected();      /* 当前不在线（>30s 无数据）→ 纯时钟 */
 
     if (clocking != was_clocking) {
         if (clocking) {
@@ -302,14 +313,11 @@ static void buddy_main_loop(void) {
                 }
             }
 
-            /* 更新宠物统计 */
-            BuddyStats *stats = buddy_stats_get();
-            buddy_ui_set_pet_stats(
-                buddy_stats_mood_tier() * 25,
-                buddy_stats_fed_progress() * 10,
-                buddy_stats_energy_tier() * 20,
-                stats->level
-            );
+            /* 更新 PET 用量显示 (opencode Zen 套餐 rolling/weekly/monthly) */
+            int ur = (claude->usage_rolling == 0xFF) ? 0 : claude->usage_rolling;
+            int uw = (claude->usage_weekly == 0xFF) ? 0 : claude->usage_weekly;
+            int um = (claude->usage_monthly == 0xFF) ? 0 : claude->usage_monthly;
+            buddy_ui_set_usage(ur, uw, um);
 
             lv_port_disp_unlock();
         }

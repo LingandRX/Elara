@@ -43,6 +43,9 @@ typedef struct {
     char     prompt_id[40];     /* 待审批请求 ID；空 = 无审批 */
     char     prompt_tool[20];
     char     prompt_hint[44];
+    uint8_t  usage_rolling;     /* Zen 套餐用量 0-100 (滚动窗口), 0xFF=未知 */
+    uint8_t  usage_weekly;      /* 每周用量 0-100, 0xFF=未知 */
+    uint8_t  usage_monthly;     /* 每月用量 0-100, 0xFF=未知 */
 } ClaudeState;
 
 /* 全局状态 */

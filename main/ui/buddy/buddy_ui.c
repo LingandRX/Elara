@@ -51,13 +51,15 @@ static lv_obj_t *s_battery_label = NULL;
 /* PET 模式 */
 static lv_obj_t *s_pet_page = NULL;
 static lv_obj_t *s_pet_ascii_box = NULL;
-static lv_obj_t *s_pet_mood_label = NULL;
-static lv_obj_t *s_pet_mood_bar = NULL;
-static lv_obj_t *s_pet_fed_label = NULL;
-static lv_obj_t *s_pet_fed_bar = NULL;
-static lv_obj_t *s_pet_energy_label = NULL;
-static lv_obj_t *s_pet_energy_bar = NULL;
-static lv_obj_t *s_pet_level_label = NULL;
+static lv_obj_t *s_usage_rolling_label = NULL;
+static lv_obj_t *s_usage_rolling_bar = NULL;
+static lv_obj_t *s_usage_rolling_pct = NULL;
+static lv_obj_t *s_usage_weekly_label = NULL;
+static lv_obj_t *s_usage_weekly_bar = NULL;
+static lv_obj_t *s_usage_weekly_pct = NULL;
+static lv_obj_t *s_usage_monthly_label = NULL;
+static lv_obj_t *s_usage_monthly_bar = NULL;
+static lv_obj_t *s_usage_monthly_pct = NULL;
 
 /* INFO 模式 */
 static lv_obj_t *s_info_page = NULL;
@@ -105,11 +107,10 @@ static int s_clock_h = 12;
 static int s_clock_m = 0;
 static int s_clock_s = 0;
 
-/* PET 统计 */
-static int s_pet_mood = 50;
-static int s_pet_fed = 50;
-static int s_pet_energy = 50;
-static int s_pet_level = 1;
+/* PET 用量 */
+static int s_usage_rolling = 0;
+static int s_usage_weekly = 0;
+static int s_usage_monthly = 0;
 
 /* 设置状态 */
 static int  s_brightness_pct = 80;
@@ -265,74 +266,77 @@ static void create_pet_page(void) {
 
     /* 标题 */
     lv_obj_t *title = lv_label_create(s_pet_page);
-    lv_label_set_text(title, LV_SYMBOL_HOME " PET STATUS");
+    lv_label_set_text(title, LV_SYMBOL_CHARGE " USAGE");
     lv_obj_set_style_text_color(title, COLOR_HOT, 0);
     lv_obj_set_style_text_font(title, LV_FONT_DEFAULT, 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
 
-    int y = 45;
+    int y = 40;
 
-    /* Mood */
-    s_pet_mood_label = lv_label_create(s_pet_page);
-    lv_label_set_text(s_pet_mood_label, "Mood");
-    lv_obj_set_style_text_color(s_pet_mood_label, COLOR_TEXT, 0);
-    lv_obj_align(s_pet_mood_label, LV_ALIGN_TOP_LEFT, 8, y);
+    /* Rolling */
+    s_usage_rolling_label = lv_label_create(s_pet_page);
+    lv_label_set_text(s_usage_rolling_label, "Rolling");
+    lv_obj_set_style_text_color(s_usage_rolling_label, COLOR_TEXT, 0);
+    lv_obj_align(s_usage_rolling_label, LV_ALIGN_TOP_LEFT, 8, y);
 
-    s_pet_mood_bar = lv_bar_create(s_pet_page);
-    lv_obj_set_size(s_pet_mood_bar, SCREEN_W - 60, BAR_H);
-    lv_bar_set_range(s_pet_mood_bar, 0, 100);
-    lv_bar_set_value(s_pet_mood_bar, 50, LV_ANIM_OFF);
-    lv_obj_set_style_bg_color(s_pet_mood_bar, COLOR_PANEL, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(s_pet_mood_bar, COLOR_HOT, LV_PART_INDICATOR);
-    lv_obj_set_style_radius(s_pet_mood_bar, 4, LV_PART_MAIN);
-    lv_obj_set_style_radius(s_pet_mood_bar, 4, LV_PART_INDICATOR);
-    lv_obj_align(s_pet_mood_bar, LV_ALIGN_TOP_RIGHT, -8, y + 4);
+    s_usage_rolling_bar = lv_bar_create(s_pet_page);
+    lv_obj_set_size(s_usage_rolling_bar, SCREEN_W - 60, BAR_H);
+    lv_bar_set_range(s_usage_rolling_bar, 0, 100);
+    lv_bar_set_value(s_usage_rolling_bar, 0, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(s_usage_rolling_bar, COLOR_PANEL, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(s_usage_rolling_bar, COLOR_HOT, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(s_usage_rolling_bar, 4, LV_PART_MAIN);
+    lv_obj_set_style_radius(s_usage_rolling_bar, 4, LV_PART_INDICATOR);
+    lv_obj_align(s_usage_rolling_bar, LV_ALIGN_TOP_RIGHT, -8, y + 4);
+
+    s_usage_rolling_pct = lv_label_create(s_usage_rolling_bar);
+    lv_label_set_text(s_usage_rolling_pct, "0%");
+    lv_obj_set_style_text_color(s_usage_rolling_pct, COLOR_TEXT, 0);
+    lv_obj_center(s_usage_rolling_pct);
     y += ROW_H;
 
-    /* Fed */
-    s_pet_fed_label = lv_label_create(s_pet_page);
-    lv_label_set_text(s_pet_fed_label, "Fed");
-    lv_obj_set_style_text_color(s_pet_fed_label, COLOR_TEXT, 0);
-    lv_obj_align(s_pet_fed_label, LV_ALIGN_TOP_LEFT, 8, y);
+    /* Weekly */
+    s_usage_weekly_label = lv_label_create(s_pet_page);
+    lv_label_set_text(s_usage_weekly_label, "Weekly");
+    lv_obj_set_style_text_color(s_usage_weekly_label, COLOR_TEXT, 0);
+    lv_obj_align(s_usage_weekly_label, LV_ALIGN_TOP_LEFT, 8, y);
 
-    s_pet_fed_bar = lv_bar_create(s_pet_page);
-    lv_obj_set_size(s_pet_fed_bar, SCREEN_W - 60, BAR_H);
-    lv_bar_set_range(s_pet_fed_bar, 0, 100);
-    lv_bar_set_value(s_pet_fed_bar, 50, LV_ANIM_OFF);
-    lv_obj_set_style_bg_color(s_pet_fed_bar, COLOR_PANEL, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(s_pet_fed_bar, COLOR_GREEN, LV_PART_INDICATOR);
-    lv_obj_set_style_radius(s_pet_fed_bar, 4, LV_PART_MAIN);
-    lv_obj_set_style_radius(s_pet_fed_bar, 4, LV_PART_INDICATOR);
-    lv_obj_align(s_pet_fed_bar, LV_ALIGN_TOP_RIGHT, -8, y + 4);
+    s_usage_weekly_bar = lv_bar_create(s_pet_page);
+    lv_obj_set_size(s_usage_weekly_bar, SCREEN_W - 60, BAR_H);
+    lv_bar_set_range(s_usage_weekly_bar, 0, 100);
+    lv_bar_set_value(s_usage_weekly_bar, 0, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(s_usage_weekly_bar, COLOR_PANEL, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(s_usage_weekly_bar, COLOR_GREEN, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(s_usage_weekly_bar, 4, LV_PART_MAIN);
+    lv_obj_set_style_radius(s_usage_weekly_bar, 4, LV_PART_INDICATOR);
+    lv_obj_align(s_usage_weekly_bar, LV_ALIGN_TOP_RIGHT, -8, y + 4);
+
+    s_usage_weekly_pct = lv_label_create(s_usage_weekly_bar);
+    lv_label_set_text(s_usage_weekly_pct, "0%");
+    lv_obj_set_style_text_color(s_usage_weekly_pct, COLOR_TEXT, 0);
+    lv_obj_center(s_usage_weekly_pct);
     y += ROW_H;
 
-    /* Energy */
-    s_pet_energy_label = lv_label_create(s_pet_page);
-    lv_label_set_text(s_pet_energy_label, "Energy");
-    lv_obj_set_style_text_color(s_pet_energy_label, COLOR_TEXT, 0);
-    lv_obj_align(s_pet_energy_label, LV_ALIGN_TOP_LEFT, 8, y);
+    /* Monthly */
+    s_usage_monthly_label = lv_label_create(s_pet_page);
+    lv_label_set_text(s_usage_monthly_label, "Monthly");
+    lv_obj_set_style_text_color(s_usage_monthly_label, COLOR_TEXT, 0);
+    lv_obj_align(s_usage_monthly_label, LV_ALIGN_TOP_LEFT, 8, y);
 
-    s_pet_energy_bar = lv_bar_create(s_pet_page);
-    lv_obj_set_size(s_pet_energy_bar, SCREEN_W - 60, BAR_H);
-    lv_bar_set_range(s_pet_energy_bar, 0, 100);
-    lv_bar_set_value(s_pet_energy_bar, 50, LV_ANIM_OFF);
-    lv_obj_set_style_bg_color(s_pet_energy_bar, COLOR_PANEL, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(s_pet_energy_bar, lv_color_hex(0x64B4FF), LV_PART_INDICATOR);
-    lv_obj_set_style_radius(s_pet_energy_bar, 4, LV_PART_MAIN);
-    lv_obj_set_style_radius(s_pet_energy_bar, 4, LV_PART_INDICATOR);
-    lv_obj_align(s_pet_energy_bar, LV_ALIGN_TOP_RIGHT, -8, y + 4);
-    y += ROW_H;
+    s_usage_monthly_bar = lv_bar_create(s_pet_page);
+    lv_obj_set_size(s_usage_monthly_bar, SCREEN_W - 60, BAR_H);
+    lv_bar_set_range(s_usage_monthly_bar, 0, 100);
+    lv_bar_set_value(s_usage_monthly_bar, 0, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(s_usage_monthly_bar, COLOR_PANEL, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(s_usage_monthly_bar, lv_color_hex(0x64B4FF), LV_PART_INDICATOR);
+    lv_obj_set_style_radius(s_usage_monthly_bar, 4, LV_PART_MAIN);
+    lv_obj_set_style_radius(s_usage_monthly_bar, 4, LV_PART_INDICATOR);
+    lv_obj_align(s_usage_monthly_bar, LV_ALIGN_TOP_RIGHT, -8, y + 4);
 
-    /* Level */
-    lv_obj_t *lvl_label = lv_label_create(s_pet_page);
-    lv_label_set_text(lvl_label, "Level");
-    lv_obj_set_style_text_color(lvl_label, COLOR_TEXT, 0);
-    lv_obj_align(lvl_label, LV_ALIGN_TOP_LEFT, 8, y);
-
-    s_pet_level_label = lv_label_create(s_pet_page);
-    lv_label_set_text(s_pet_level_label, "1");
-    lv_obj_set_style_text_color(s_pet_level_label, COLOR_HOT, 0);
-    lv_obj_align(s_pet_level_label, LV_ALIGN_TOP_RIGHT, -8, y);
+    s_usage_monthly_pct = lv_label_create(s_usage_monthly_bar);
+    lv_label_set_text(s_usage_monthly_pct, "0%");
+    lv_obj_set_style_text_color(s_usage_monthly_pct, COLOR_TEXT, 0);
+    lv_obj_center(s_usage_monthly_pct);
     y += ROW_H;
 
     /* ASCII Pet 预览区 */
@@ -998,18 +1002,24 @@ bool buddy_ui_is_approval_visible(void) {
 
 /* ============ PET 页面 ============ */
 
-void buddy_ui_set_pet_stats(int mood, int fed, int energy, int level) {
-    s_pet_mood = mood;
-    s_pet_fed = fed;
-    s_pet_energy = energy;
-    s_pet_level = level;
+void buddy_ui_set_usage(int rolling, int weekly, int monthly) {
+    if (rolling < 0) rolling = 0;
+    if (rolling > 100) rolling = 100;
+    if (weekly < 0) weekly = 0;
+    if (weekly > 100) weekly = 100;
+    if (monthly < 0) monthly = 0;
+    if (monthly > 100) monthly = 100;
+    s_usage_rolling = rolling;
+    s_usage_weekly = weekly;
+    s_usage_monthly = monthly;
 
-    if (s_pet_mood_bar)   lv_bar_set_value(s_pet_mood_bar, mood, LV_ANIM_ON);
-    if (s_pet_fed_bar)    lv_bar_set_value(s_pet_fed_bar, fed, LV_ANIM_ON);
-    if (s_pet_energy_bar) lv_bar_set_value(s_pet_energy_bar, energy, LV_ANIM_ON);
-    if (s_pet_level_label) {
-        lv_label_set_text_fmt(s_pet_level_label, "%d", level);
-    }
+    if (s_usage_rolling_bar) lv_bar_set_value(s_usage_rolling_bar, rolling, LV_ANIM_ON);
+    if (s_usage_weekly_bar)  lv_bar_set_value(s_usage_weekly_bar, weekly, LV_ANIM_ON);
+    if (s_usage_monthly_bar) lv_bar_set_value(s_usage_monthly_bar, monthly, LV_ANIM_ON);
+
+    if (s_usage_rolling_pct) lv_label_set_text_fmt(s_usage_rolling_pct, "%d%%", rolling);
+    if (s_usage_weekly_pct)  lv_label_set_text_fmt(s_usage_weekly_pct, "%d%%", weekly);
+    if (s_usage_monthly_pct) lv_label_set_text_fmt(s_usage_monthly_pct, "%d%%", monthly);
 }
 
 /* ============ INFO 页面 ============ */
