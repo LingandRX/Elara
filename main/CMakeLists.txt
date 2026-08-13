@@ -8,6 +8,7 @@ idf_component_register(
         "ui/lvgl_widgets.c"
         "ui/pet_anim.c"
         "ui/pet_ui.c"
+        "ui/sprite_pet.c"
         "ui/buddy/buddy_ui.c"
         "ui/buddy/buddy_anim.c"
         "comm/uart_comm.c"

@@ -54,7 +54,8 @@ typedef enum {
     BUDDY_SET_LED,
     BUDDY_SET_HUD,
     BUDDY_SET_ROTATE,
-    BUDDY_SET_ASCII,
+    BUDDY_SET_ASCII,      /* 宠物物种 */
+    BUDDY_SET_PET_MODE,   /* 宠物展示模式: ASCII pet / 动画 pet */
     BUDDY_SET_AUTO_SLEEP,
     BUDDY_SET_RESET,
     BUDDY_SET_BACK,
@@ -274,6 +275,32 @@ void buddy_ui_settings_set_species(const char *name);
  * @param pct 亮度百分比 (0-100)
  */
 void buddy_ui_settings_set_brightness(int pct);
+
+/**
+ * 更新宠物展示模式设置显示（BUDDY_SET_PET_MODE 项：切换展示模式而非开关）
+ * @param animated true=动画 pet, false=ASCII pet
+ */
+void buddy_ui_settings_set_pet_mode(bool animated);
+
+/* ============ 宠物展示模式 ============ */
+
+/**
+ * 切换主页宠物展示模式（ASCII pet ↔ 动画 pet）
+ * @param animated true=动画 pet, false=ASCII pet
+ */
+void buddy_ui_set_pet_mode(bool animated);
+
+/**
+ * 查询当前主页宠物是否为动画 pet 模式
+ * @return true=动画 pet, false=ASCII pet
+ */
+bool buddy_ui_is_pet_animated(void);
+
+/**
+ * 同步 Persona 状态到动画 pet（用于驱动精灵图动画）
+ * @param persona_state 7 种 Persona 状态 (PersonaState)
+ */
+void buddy_ui_anim_set_persona(uint8_t persona_state);
 
 /* ============ 时钟 ============ */
 
