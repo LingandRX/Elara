@@ -9,7 +9,10 @@
  * 配置 (环境变量):
  *   ELARA_HOST  设备 IP, 默认 192.168.2.155
  *   ELARA_PORT  设备 TCP 端口, 默认 8080
+ *   ELARA_ZEN_KEY  OpenCode Zen API key, 缺省时从 auth.json 读取 opencode-go
  */
+import { readFileSync } from "fs";
+
 export const ElaraPlugin = async ({ client }) => {
   const HOST = process.env.ELARA_HOST || "192.168.2.155";
   const PORT = parseInt(process.env.ELARA_PORT || "8080", 10);
@@ -19,6 +22,46 @@ export const ElaraPlugin = async ({ client }) => {
   const seen = new Map();               // messageID -> 已累计 token 数 (防重复累加)
   const state = { running: 0, waiting: 0, completed: false, msg: "idle", tokens: 0, tokens_today: 0 };
   let prompt = null;                    // 待设备审批的弹窗 (随每次上报持续下发)
+
+  /* ---------- Zen 套餐用量 (rolling/weekly/monthly) ---------- */
+
+  // 从 auth.json 提取 Zen (opencode-go) API key；可用 ELARA_ZEN_KEY 环境变量覆盖
+  function zenKey() {
+    if (process.env.ELARA_ZEN_KEY) return process.env.ELARA_ZEN_KEY;
+    try {
+      const home = process.env.HOME || process.env.USERPROFILE || "";
+      const dataHome = process.env.XDG_DATA_HOME || `${home}/.local/share`;
+      const auth = JSON.parse(readFileSync(`${dataHome}/opencode/auth.json`, "utf8"));
+      const key = auth?.["opencode-go"]?.key || auth?.["opencode"]?.key;
+      if (key) return key;
+    } catch { /* 找不到就跳过用量上报 */ }
+    return null;
+  }
+
+  const zenUsage = { rolling: -1, weekly: -1, monthly: -1 }; // -1 = 未知
+  let zenUsageAt = 0;
+
+  // 查询 Zen 套餐额度（官方接口），失败时保留旧值
+  async function fetchZenUsage() {
+    const key = zenKey();
+    if (!key) return;
+    const now = Date.now();
+    if (now - zenUsageAt < 30000) return; // 30s 缓存，避免频繁请求
+    try {
+      const r = await fetch("https://opencode.ai/zen/go/v1/usage", {
+        headers: { authorization: `Bearer ${key}` },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!r.ok) return;
+      const j = await r.json();
+      const u = j?.usage;
+      if (!u) return;
+      if (typeof u.rolling?.percent === "number") zenUsage.rolling = u.rolling.percent;
+      if (typeof u.weekly?.percent === "number") zenUsage.weekly = u.weekly.percent;
+      if (typeof u.monthly?.percent === "number") zenUsage.monthly = u.monthly.percent;
+      zenUsageAt = Date.now();
+    } catch { /* 网络失败等，下次再试 */ }
+  }
 
   /* ---------- TCP 传输 ---------- */
 
@@ -56,6 +99,14 @@ export const ElaraPlugin = async ({ client }) => {
       msg: (state.msg || "opencode").slice(0, 23),
       entries: [(state.msg || "opencode").slice(0, 90)],
     };
+    // Zen 套餐用量 (0-100), PET 页面进度条显示；未知时省略
+    if (zenUsage.rolling >= 0 || zenUsage.weekly >= 0 || zenUsage.monthly >= 0) {
+      msg.usage = {
+        rolling: zenUsage.rolling,  // 滚动窗口
+        weekly: zenUsage.weekly,    // 每周
+        monthly: zenUsage.monthly,  // 每月
+      };
+    }
     if (prompt) msg.prompt = prompt;    // 有待审批时持续附带, 否则设备会撤销弹窗
     send(msg);
   }
@@ -99,8 +150,11 @@ export const ElaraPlugin = async ({ client }) => {
 
   /* ---------- 启动: 立即上报一次 + 15s 心跳 (保持设备 Online) ---------- */
 
-  report();
-  setInterval(report, 15000);
+  fetchZenUsage().then(report);  // 先拉取用量再上报
+  setInterval(() => {
+    fetchZenUsage();
+    report();
+  }, 15000);
 
   /* ---------- 事件订阅 ---------- */
 
