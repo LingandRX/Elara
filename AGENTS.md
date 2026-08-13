@@ -18,28 +18,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 构建命令
 
-### 使用构建脚本 (推荐)
-
-```bash
-# 显示帮助
-./build.sh help
-
-# 编译项目
-./build.sh build
-
-# 烧录固件
-./build.sh flash /dev/tty.usbmodem0
-
-# 烧录并监控
-./build.sh flash-monitor
-
-# 清理构建产物
-./build.sh clean
-
-# 打开菜单配置
-./build.sh menuconfig
-```
-
 ### 直接使用 idf.py
 
 ```bash
