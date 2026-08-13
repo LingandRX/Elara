@@ -51,7 +51,6 @@ typedef struct {
     PersonaState active_state;    /* 当前激活状态（含 one-shot） */
     uint32_t     oneshot_until_ms;
     uint32_t     last_interact_ms;
-    bool         dimmed;
     bool         screen_off;
     bool         napping;
     uint32_t     nap_start_ms;

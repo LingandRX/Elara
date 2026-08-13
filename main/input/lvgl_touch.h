@@ -35,6 +35,17 @@ typedef void (*lvgl_touch_swipe_cb_t)(lv_dir_t dir);
  */
 void lvgl_touch_set_swipe_cb(lvgl_touch_swipe_cb_t cb);
 
+/**
+ * 触摸按下回调 (驱动层检测到新的触点按下时调用)
+ */
+typedef void (*lvgl_touch_press_cb_t)(void);
+
+/**
+ * 注册触摸按下回调（用于唤醒屏幕/重置空闲计时）
+ * @param cb 回调, 可为 NULL 取消
+ */
+void lvgl_touch_set_press_cb(lvgl_touch_press_cb_t cb);
+
 #ifdef __cplusplus
 }
 #endif
