@@ -241,6 +241,11 @@ static void apply_json(const char *line, ClaudeState *out) {
     s_runtime.last_live_ms = out->last_updated_ms;
     out->connected = true;
 
+    ESP_LOGI(TAG, "session: total=%u running=%u waiting=%u completed=%d msg=\"%s\" prompt=%s",
+             out->sessions_total, out->sessions_running, out->sessions_waiting,
+             out->recently_completed ? 1 : 0, out->msg,
+             out->prompt_id[0] ? "yes" : "no");
+
     cJSON_Delete(doc);
 }
 

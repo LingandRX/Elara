@@ -18,6 +18,9 @@ static char s_addr_str[128];
 /* 当前进行 TCP 上传的连接 socket (用于 upload 完成回调回传 finished) */
 static int s_upload_sock = -1;
 
+/* 当前 TCP 客户端连接 (设备→主机回传, 如审批结果/事件) */
+static int s_client_sock = -1;
+
 static int send_all(int sock, const char *data, size_t len) {
     size_t sent = 0;
     while (sent < len) {
@@ -26,6 +29,16 @@ static int send_all(int sock, const char *data, size_t len) {
         sent += ret;
     }
     return 0;
+}
+
+/* 通过当前 TCP 客户端连接发送数据; 无连接/发送失败返回 0 */
+int tcp_server_send(const char *data, size_t len) {
+    if (s_client_sock < 0) return 0;
+    if (send_all(s_client_sock, data, len) < 0) {
+        ESP_LOGW(TAG, "tcp send failed, errno %d", errno);
+        return 0;
+    }
+    return 1;
 }
 
 static void tcp_send_event(int sock, const char *source, const char *action) {
@@ -111,6 +124,7 @@ static void tcp_server_task(void *pvParameters) {
                 inet_ntoa_r(((struct sockaddr_in *)&source_addr)->sin_addr, s_addr_str, sizeof(s_addr_str) - 1);
             }
             ESP_LOGI(TAG, "Socket accepted ip address: %s", s_addr_str);
+            s_client_sock = sock;
 
             /* 关闭 Nagle, 让 ready/finished 等事件立即发出 */
             int nodelay = 1;
@@ -148,6 +162,7 @@ static void tcp_server_task(void *pvParameters) {
                             char *cr = strchr(line, '\r');
                             if (cr) *cr = '\0';
                             if (strlen(line) > 0) {
+                                ESP_LOGI(TAG, "RX: %s", line);
                                 bool upload_cmd = is_upload_command(line);
                                 comm_parse_cmd(line);
                                 if (upload_cmd) {
@@ -179,6 +194,7 @@ static void tcp_server_task(void *pvParameters) {
             } while (len > 0);
 
             if (s_upload_sock == sock) s_upload_sock = -1;
+            if (s_client_sock == sock) s_client_sock = -1;
             shutdown(sock, 0);
             close(sock);
         }
