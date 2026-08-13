@@ -460,9 +460,13 @@ static void execute_settings_action(BuddySettingItem item) {
         break;
     }
     case BUDDY_SET_ASCII: {
-        ui->buddy_mode = !ui->buddy_mode;
-        buddy_ui_settings_set_toggle(BUDDY_SET_ASCII, ui->buddy_mode);
-        if (ui->buddy_mode) buddy_anim_set_species_idx(0);
+        /* 切换宠物物种（不是开关）：循环切换到下一个角色并持久化到 NVS */
+        ui->buddy_mode = true;               /* 物种角色使用 ASCII 渲染 */
+        buddy_anim_next_species();
+        buddy_anim_invalidate();
+        species_idx_save(buddy_anim_get_species_idx());
+        buddy_ui_settings_set_species(buddy_anim_get_species_name());
+        beep(1800, 30);
         break;
     }
     case BUDDY_SET_AUTO_SLEEP: {
@@ -718,6 +722,8 @@ void app_main(void) {
     } else {
         buddy_anim_set_species_idx(species_idx % buddy_anim_get_species_count());
     }
+    /* 同步设置菜单中的物种名显示 */
+    buddy_ui_settings_set_species(buddy_anim_get_species_name());
 
     /* 12. 显示欢迎界面 */
     if (lv_port_disp_lock(-1)) {

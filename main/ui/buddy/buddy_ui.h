@@ -265,6 +265,12 @@ BuddySettingItem buddy_ui_get_settings_selected(void);
 void buddy_ui_settings_set_toggle(BuddySettingItem item, bool on);
 
 /**
+ * 更新宠物物种显示（BUDDY_SET_ASCII 项：切换宠物角色而非开关）
+ * @param name 物种名称（如 "cat"、"capybara"）
+ */
+void buddy_ui_settings_set_species(const char *name);
+
+/**
  * 更新亮度设置显示
  * @param pct 亮度百分比 (0-100)
  */
