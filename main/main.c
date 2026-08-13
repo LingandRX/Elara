@@ -300,8 +300,12 @@ static void buddy_main_loop(void) {
     /* 12. 渲染更新 */
     if (!rt->napping && !rt->screen_off) {
         if (lv_port_disp_lock(50)) {
-            /* 更新动画 */
-            buddy_anim_tick(rt->active_state, s_tick);
+            /* 更新动画 pet（精灵图）状态 */
+            buddy_ui_anim_set_persona(rt->active_state);
+            /* ASCII pet 动画：动画 pet 模式下隐藏, 跳过绘制 */
+            if (!buddy_ui_is_pet_animated()) {
+                buddy_anim_tick(rt->active_state, s_tick);
+            }
             buddy_ui_anim_tick(s_tick);
 
             /* 更新 HUD（欢迎消息期间不覆盖） */
@@ -472,6 +476,18 @@ static void execute_settings_action(BuddySettingItem item) {
         buddy_anim_invalidate();
         species_idx_save(buddy_anim_get_species_idx());
         buddy_ui_settings_set_species(buddy_anim_get_species_name());
+        beep(1800, 30);
+        break;
+    }
+    case BUDDY_SET_PET_MODE: {
+        /* 宠物展示模式：ASCII pet ↔ 动画 pet (精灵图)，持久化到 NVS */
+        BuddySettings *set = buddy_settings_get();
+        set->pet_mode = !set->pet_mode;
+        buddy_settings_save();
+        ui->buddy_mode = !set->pet_mode;     /* 动画 pet 时非 ASCII 渲染 */
+        buddy_ui_settings_set_pet_mode(set->pet_mode);
+        buddy_ui_set_pet_mode(set->pet_mode);
+        buddy_anim_invalidate();
         beep(1800, 30);
         break;
     }
@@ -704,6 +720,10 @@ void app_main(void) {
     buddy_ui_settings_set_toggle(BUDDY_SET_LED, set->led);
     buddy_ui_settings_set_toggle(BUDDY_SET_HUD, set->hud);
     buddy_ui_settings_set_toggle(BUDDY_SET_AUTO_SLEEP, set->auto_sleep);
+
+    /* 8.3 宠物展示模式（ASCII pet / 动画 pet）同步到主页与设置显示 */
+    buddy_ui_settings_set_pet_mode(set->pet_mode);
+    buddy_ui_set_pet_mode(set->pet_mode);
 
     /* 8.5 启动 WiFi 与 TCP Server（上位机网络通信，根据设置决定是否启用 WiFi） */
     wifi_manager_init();

@@ -6,6 +6,7 @@
 
 #include "buddy_ui.h"
 #include "buddy_anim.h"
+#include "sprite_pet.h"
 #include "buddy/buddy_state.h"
 #include "esp_log.h"
 #include "esp_system.h"
@@ -43,6 +44,8 @@ static lv_obj_t *s_container = NULL;
 /* NORMAL 模式 */
 static lv_obj_t *s_normal_page = NULL;
 static lv_obj_t *s_anim_canvas = NULL;
+static SpritePet *s_sprite_pet = NULL;   /* 动画 pet (精灵图) */
+static bool s_pet_animated = false;      /* true=动画 pet, false=ASCII pet */
 static lv_obj_t *s_clock_label = NULL;
 static lv_obj_t *s_hud_panel = NULL;
 static lv_obj_t *s_hud_label = NULL;
@@ -157,6 +160,7 @@ static const char *s_setting_texts[BUDDY_SET_MAX] = {
     LV_SYMBOL_EYE_OPEN  " HUD",
     LV_SYMBOL_REFRESH   " Rotate",
     LV_SYMBOL_FILE      " Pet",
+    LV_SYMBOL_VIDEO     " Pet Mode",
     LV_SYMBOL_CHARGE    " Auto Sleep",
     LV_SYMBOL_TRASH     " Reset",
     LV_SYMBOL_LEFT      " Back",
@@ -215,6 +219,9 @@ static void create_normal_page(void) {
     obj_set_pad_all(s_anim_canvas, 0);
     lv_obj_align(s_anim_canvas, LV_ALIGN_TOP_LEFT, 0, 0);
     lv_obj_clear_flag(s_anim_canvas, LV_OBJ_FLAG_SCROLLABLE);
+
+    /* 动画 pet (精灵图) 视口：默认隐藏，由宠物展示模式设置切换 */
+    s_sprite_pet = sprite_pet_create(s_normal_page, SCREEN_W, ANIM_AREA_H);
 
     /* 时钟标签 */
     s_clock_label = lv_label_create(s_normal_page);
@@ -724,7 +731,7 @@ static void create_settings_overlay(void) {
     lv_obj_add_event_cb(s_settings_overlay, overlay_click_close_cb, LV_EVENT_CLICKED, s_settings_overlay);
 
     s_settings_panel = lv_obj_create(s_settings_overlay);
-    lv_obj_set_size(s_settings_panel, 154, 260);
+    lv_obj_set_size(s_settings_panel, 154, 300);
     lv_obj_set_style_bg_color(s_settings_panel, COLOR_BG, 0);
     lv_obj_set_style_border_width(s_settings_panel, 1, 0);
     lv_obj_set_style_border_color(s_settings_panel, COLOR_TEXT_DIM, 0);
@@ -775,6 +782,8 @@ static void create_settings_overlay(void) {
     buddy_ui_settings_set_toggle(BUDDY_SET_ROTATE, s_set_rotate);
     /* Pet 物种名在 buddy_anim_init 之后由 buddy_ui_settings_set_species() 同步 */
     lv_label_set_text(s_setting_vals[BUDDY_SET_ASCII], "");
+    /* 宠物展示模式: 默认 ASCII, 由 buddy_ui_settings_set_pet_mode() 同步实际设置 */
+    buddy_ui_settings_set_pet_mode(false);
     buddy_ui_settings_set_toggle(BUDDY_SET_AUTO_SLEEP, s_set_auto_sleep);
     lv_label_set_text(s_setting_vals[BUDDY_SET_RESET], "");
     lv_label_set_text(s_setting_vals[BUDDY_SET_BACK], "");
@@ -1121,6 +1130,8 @@ void buddy_ui_settings_set_toggle(BuddySettingItem item, bool on) {
             /* 亮度由单独函数处理 */
         } else if (item == BUDDY_SET_ASCII) {
             /* Pet 物种名由 buddy_ui_settings_set_species() 显示 */
+        } else if (item == BUDDY_SET_PET_MODE) {
+            /* 宠物展示模式由 buddy_ui_settings_set_pet_mode() 显示 */
         } else if (item == BUDDY_SET_RESET || item == BUDDY_SET_BACK) {
             lv_label_set_text(s_setting_vals[item], "");
         } else {
@@ -1135,6 +1146,15 @@ void buddy_ui_settings_set_species(const char *name) {
     if (s_setting_vals[BUDDY_SET_ASCII] && name) {
         lv_label_set_text(s_setting_vals[BUDDY_SET_ASCII], name);
         lv_obj_set_style_text_color(s_setting_vals[BUDDY_SET_ASCII], COLOR_HOT, 0);
+    }
+}
+
+/* 设置宠物展示模式显示（BUDDY_SET_PET_MODE 项：ASCII / 动画 pet） */
+void buddy_ui_settings_set_pet_mode(bool animated) {
+    if (s_setting_vals[BUDDY_SET_PET_MODE]) {
+        lv_label_set_text(s_setting_vals[BUDDY_SET_PET_MODE], animated ? "Anim" : "ASCII");
+        lv_obj_set_style_text_color(s_setting_vals[BUDDY_SET_PET_MODE],
+                                    animated ? COLOR_GREEN : COLOR_TEXT_DIM, 0);
     }
 }
 
@@ -1170,11 +1190,64 @@ void buddy_ui_set_battery(int percentage, bool charging) {
     lv_label_set_text_fmt(s_battery_label, "%s %d%%", symbol, percentage);
 }
 
+/* ============ 宠物展示模式 ============ */
+
+/* Persona 状态 → 动画 pet 状态映射 */
+static PetAnimState persona_to_pet_state(uint8_t p) {
+    switch (p) {
+    case PERSONA_SLEEP:      return PET_ANIM_WAITING;
+    case PERSONA_BUSY:       return PET_ANIM_RUNNING;
+    case PERSONA_ATTENTION:  return PET_ANIM_WAVING;
+    case PERSONA_CELEBRATE:  return PET_ANIM_JUMPING;
+    case PERSONA_DIZZY:      return PET_ANIM_FAILED;
+    case PERSONA_HEART:      return PET_ANIM_WAVING;
+    case PERSONA_IDLE:
+    default:                 return PET_ANIM_IDLE;
+    }
+}
+
+void buddy_ui_set_pet_mode(bool animated) {
+    s_pet_animated = animated;
+    if (!s_sprite_pet) return;
+
+    if (animated) {
+        /* 存储可能刚挂载/更新, 先刷新资源; 无资源时回退 ASCII */
+        sprite_pet_reload(s_sprite_pet);
+        if (!sprite_pet_ready(s_sprite_pet)) {
+            ESP_LOGW(TAG, "Sprite pet not available, fallback to ASCII");
+            s_pet_animated = false;
+        }
+    }
+
+    sprite_pet_set_visible(s_sprite_pet, s_pet_animated);
+    if (s_anim_canvas) {
+        if (s_pet_animated) {
+            lv_obj_add_flag(s_anim_canvas, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_clear_flag(s_anim_canvas, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+}
+
+bool buddy_ui_is_pet_animated(void) {
+    return s_pet_animated;
+}
+
+void buddy_ui_anim_set_persona(uint8_t persona_state) {
+    if (!s_sprite_pet || !s_pet_animated) return;
+    sprite_pet_set_state(s_sprite_pet, persona_to_pet_state(persona_state));
+}
+
 /* ============ 动画 tick ============ */
 
 void buddy_ui_anim_tick(uint32_t tick) {
-    /* 触发 buddy 角色动画 */
-    if (s_mode == BUDDY_MODE_NORMAL && s_anim_canvas) {
+    /* 动画 pet (精灵图)：推进动画帧 */
+    if (s_mode == BUDDY_MODE_NORMAL && s_pet_animated && s_sprite_pet) {
+        sprite_pet_update(s_sprite_pet);
+    }
+
+    /* 触发 buddy 角色动画 (ASCII pet; 动画 pet 模式下隐藏) */
+    if (s_mode == BUDDY_MODE_NORMAL && s_anim_canvas && !s_pet_animated) {
         /* 使用 buddy_anim 渲染到动画区域 */
         buddy_anim_render_to(s_anim_canvas, SCREEN_W / 2, ANIM_AREA_H / 2);
     }

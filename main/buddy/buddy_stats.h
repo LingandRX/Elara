@@ -34,6 +34,7 @@ typedef struct {
     bool hud;
     bool auto_sleep;    /* true=启用自动息屏, false=禁用 */
     uint8_t clock_rot;  /* 0=auto 1=portrait 2=landscape */
+    uint8_t pet_mode;   /* 0=ASCII pet, 1=动画 pet (精灵图) */
 } BuddySettings;
 
 /* 初始化 */

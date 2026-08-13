@@ -16,7 +16,7 @@ static const char *TAG = "BUDDY_STATS";
 #define NVS_NAMESPACE "buddy"
 
 static BuddyStats   s_stats = {0};
-static BuddySettings s_settings = { true, true, true, true, false, 0 };
+static BuddySettings s_settings = { true, true, true, true, false, 0, 0 };
 static nvs_handle_t s_nvs_handle = 0;
 static bool s_nvs_open = false;
 
@@ -131,6 +131,9 @@ void buddy_settings_init(void) {
 
     err = nvs_get_u8(s_nvs_handle, "s_crot", &val8);
     s_settings.clock_rot = (err == ESP_OK && val8 <= 2) ? val8 : 0;
+
+    err = nvs_get_u8(s_nvs_handle, "s_pmode", &val8);
+    s_settings.pet_mode = (err == ESP_OK && val8 <= 1) ? val8 : 0;
 
     _nvs_close();
     ESP_LOGI(TAG, "Settings loaded");
@@ -280,6 +283,7 @@ void buddy_settings_save(void) {
     nvs_set_u8(s_nvs_handle, "s_hud", s_settings.hud);
     nvs_set_u8(s_nvs_handle, "s_aslp", s_settings.auto_sleep);
     nvs_set_u8(s_nvs_handle, "s_crot", s_settings.clock_rot);
+    nvs_set_u8(s_nvs_handle, "s_pmode", s_settings.pet_mode);
     nvs_commit(s_nvs_handle);
     _nvs_close();
 }
@@ -366,7 +370,7 @@ void buddy_stats_factory_reset(void) {
         _nvs_close();
     }
     memset(&s_stats, 0, sizeof(s_stats));
-    s_settings = (BuddySettings){ true, true, true, true, false, 0 };
+    s_settings = (BuddySettings){ true, true, true, true, false, 0, 0 };
     s_pet_name[0] = '\0';
     s_owner_name[0] = '\0';
     strcpy(s_pet_name, "Pixel");
