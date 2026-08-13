@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include "wifi_manager.h"
+#include "tcp_server.h"
 #include "ui/pet_ui.h"
 #include "display/lv_port_disp.h"
 #include "buddy/buddy_state.h"
@@ -31,6 +32,9 @@ static comm_upload_done_cb_t s_upload_done_cb = NULL;
 static bool s_comm_console_ready = true;
 
 static void comm_console_write_len(const char *s, size_t len) {
+    /* 设备→主机命令 (审批结果/事件/xack) 同时回传当前 TCP 客户端
+     * (WiFi/TCP 场景下 USB 串口不可用, 否则审批回复会丢失) */
+    tcp_server_send(s, len);
 #ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
     if (!s_comm_console_ready) return;
     size_t sent = 0;
@@ -163,6 +167,7 @@ size_t comm_write_upload_data(const uint8_t *data, size_t len) {
 }
 
 void comm_parse_cmd(const char *line) {
+    ESP_LOGI(TAG, "CMD RX: %s", line);
     if (strncmp(line, "wifi ", 5) == 0) {
         char ssid[64] = {0}, password[64] = {0};
         const char *ssid_start = line + 5;
@@ -212,8 +217,12 @@ void comm_parse_cmd(const char *line) {
             }
         }
     }
-    /* 同时传递给 buddy_state 处理（权限、时间同步等） */
+    /* 同时传递给 buddy_state 处理（权限、时间同步等）。
+     * 注意: linebuf_feed 以 '\n' 作为行结束触发 apply_json, 而这里收到的
+     * 是已去掉换行的完整行, 必须补一个 '\n' 才能让状态机真正解析,
+     * 否则 session/prompt/time 等数据只会堆积在行缓冲里, connected 恒为 false。 */
     buddy_feed_usb_line(line, strlen(line));
+    buddy_feed_usb_line("\n", 1);
     cJSON_Delete(root);
 }
 

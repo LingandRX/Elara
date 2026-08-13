@@ -6,6 +6,7 @@
 
 #include "buddy_ui.h"
 #include "buddy_anim.h"
+#include "buddy/buddy_state.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "input/lvgl_touch.h"
@@ -96,6 +97,7 @@ static bool s_approval_visible = false;
 static InfoPageIdx s_info_idx = INFO_PAGE_ABOUT;
 static int s_menu_selected = 0;
 static int s_settings_selected = 0;
+static uint32_t s_claude_refresh_ms = 0;   /* INFO-Claude 页实时刷新节流 */
 
 /* 时钟 */
 static int s_clock_h = 12;
@@ -163,7 +165,7 @@ static const char *s_setting_texts[BUDDY_SET_MAX] = {
 static const char *s_info_titles[INFO_PAGE_MAX] = {
     "About",
     "Buttons",
-    "Claude",
+    "opencode",
     "Device",
     "Network",
     "Battery",
@@ -426,6 +428,31 @@ static void create_info_page(void) {
     lv_obj_center(next_label);
 }
 
+/* INFO-Claude 页: 实时 opencode 状态
+ * 由 update_info_content (翻页/进入时) 与 buddy_ui_anim_tick (1Hz 节流) 共同驱动 */
+static void update_info_claude_content(void) {
+    if (!s_info_content) return;
+    ClaudeState *cs = buddy_get_claude_state();
+    bool online = buddy_data_connected();
+    lv_label_set_text_fmt(s_info_content,
+        "opencode Status\n"
+        "===============\n"
+        "Link: %s\n"
+        "Msg: %s\n"
+        "Running: %d\n"
+        "Waiting: %d\n"
+        "Completed: %s\n"
+        "Tokens: %lu\n"
+        "Prompt: %s",
+        online ? "Online" : "Offline",
+        cs->msg[0] ? cs->msg : "-",
+        cs->sessions_running,
+        cs->sessions_waiting,
+        cs->recently_completed ? "yes" : "no",
+        (unsigned long)cs->tokens_today,
+        cs->prompt_id[0] ? cs->prompt_tool : "none");
+}
+
 static void update_info_content(void) {
     if (!s_info_content) return;
 
@@ -462,18 +489,7 @@ static void update_info_content(void) {
         break;
     }
     case INFO_PAGE_CLAUDE: {
-        lv_label_set_text(s_info_content,
-            "Claude Status\n"
-            "=============\n"
-            "State: Online\n"
-            "Model: claude-sonnet\n"
-            "API: Active\n"
-            "Latency: ~120ms\n\n"
-            "MCP Tools:\n"
-            "  file_system\n"
-            "  web_search\n"
-            "  code_exec\n\n"
-            "Status: All OK");
+        update_info_claude_content();
         break;
     }
     case INFO_PAGE_DEVICE: {
@@ -1146,5 +1162,14 @@ void buddy_ui_anim_tick(uint32_t tick) {
     if (s_mode == BUDDY_MODE_NORMAL && s_anim_canvas) {
         /* 使用 buddy_anim 渲染到动画区域 */
         buddy_anim_render_to(s_anim_canvas, SCREEN_W / 2, ANIM_AREA_H / 2);
+    }
+
+    /* INFO-Claude 页实时刷新 (1Hz 节流, 主循环每帧调用) */
+    if (s_mode == BUDDY_MODE_INFO && s_info_idx == INFO_PAGE_CLAUDE) {
+        uint32_t now = lv_tick_get();
+        if ((int32_t)(now - s_claude_refresh_ms) >= 1000) {
+            s_claude_refresh_ms = now;
+            update_info_claude_content();
+        }
     }
 }
