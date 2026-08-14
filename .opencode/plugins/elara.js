@@ -20,8 +20,30 @@ export const ElaraPlugin = async ({ client }) => {
   let sock = null, buf = "", seq = 0;
   const pending = new Map();            // 弹窗 id -> { permissionID, sessionID }
   const seen = new Map();               // messageID -> 已累计 token 数 (防重复累加)
-  const state = { running: 0, waiting: 0, completed: false, msg: "idle", tokens: 0, tokens_today: 0 };
+  const state = { running: 0, waiting: 0, completed: false, msg: "idle", tokens_today: 0 };
   let prompt = null;                    // 待设备审批的弹窗 (随每次上报持续下发)
+
+  /* ---------- 日志: 全部走 opencode 官方 client.app.log, 不污染 TUI ---------- */
+  // opencode 会把插件 console.* 输出转发到 TUI (污染输入框/状态区), 这里统一改用
+  // client.app.log() 写入服务端日志文件; ELARA_DEBUG=1 时额外输出 debug/info 级别。
+  const DEBUG = !!process.env.ELARA_DEBUG;
+  function log(level, message, extra) {
+    try {
+      Promise.resolve(client.app.log({
+        body: { service: "elara", level, message, extra },
+      })).catch(() => { /* 日志失败不影响主流程 */ });
+    } catch { /* 同上 */ }
+  }
+  const debug = (m) => DEBUG && log("debug", m);
+  const info  = (m) => DEBUG && log("info", m);
+  // 同类错误节流 (默认 60s): 设备离线时 connect/send 每个心跳都会失败, 避免刷日志
+  let lastThrottledAt = 0;
+  function logThrottled(level, message, ms = 60000) {
+    const now = Date.now();
+    if (now - lastThrottledAt < ms) return;
+    lastThrottledAt = now;
+    log(level, message);
+  }
 
   /* ---------- Zen 套餐用量 (rolling/weekly/monthly) ---------- */
 
@@ -72,18 +94,18 @@ export const ElaraPlugin = async ({ client }) => {
         hostname: HOST,
         port: PORT,
         socket: {
-          open() { console.log("[elara] connected"); },
+          open() { info("device connected"); },
           data(_, d) { onData(d); },
           close() { sock = null; },
-          error(_, e) { sock = null; console.error("[elara]", e.message); },
+          error(_, e) { sock = null; logThrottled("warn", "socket error: " + e.message); },
         },
       });
-    } catch (e) { console.error("[elara] connect:", e.message); }
+    } catch (e) { logThrottled("warn", "connect failed: " + e.message); }
   }
 
   async function send(obj) {
     await connect();
-    if (sock) { try { sock.write(JSON.stringify(obj) + "\n"); } catch (e) { console.error(e.message); } }
+    if (sock) { try { sock.write(JSON.stringify(obj) + "\n"); } catch (e) { logThrottled("warn", "send failed: " + e.message); } }
   }
 
   /* ---------- 上报 ---------- */
@@ -94,8 +116,8 @@ export const ElaraPlugin = async ({ client }) => {
       running: state.running,
       waiting: state.waiting,
       completed: state.completed,
-      tokens: state.tokens,             // 增量, 喂给 buddy_stats_on_bridge_tokens
-      tokens_today: state.tokens_today, // 累计, INFO 页 Tokens 显示
+      tokens: state.tokens_today,       // 累计值, 设备端 buddy_stats_on_bridge_tokens 自行计算增量
+      tokens_today: state.tokens_today,    // 累计, INFO 页 Tokens 显示
       msg: (state.msg || "opencode").slice(0, 23),
       entries: [(state.msg || "opencode").slice(0, 90)],
     };
@@ -138,14 +160,19 @@ export const ElaraPlugin = async ({ client }) => {
   async function replyPermission(m) {
     const p = pending.get(m.id);
     if (!p) return;
-    pending.delete(m.id);
-    prompt = null;
     try {
       await client.postSessionIdPermissionsPermissionId({
         path: { id: p.sessionID, permissionID: p.permissionID },
         body: { response: m.decision === "once" ? "once" : "reject" },
       });
-    } catch (e) { console.error("[elara] permission.reply:", e.message); }
+      pending.delete(m.id);
+      prompt = null;
+      debug(`permission replied: ${m.decision}`);
+    } catch (e) {
+      // 失败时保留 pending/prompt: 设备端弹窗已本地关闭, 等待 opencode 超时
+      // 或用户在 TUI 回复后由 permission.replied 统一清理
+      log("error", "permission.reply: " + e.message);
+    }
   }
 
   /* ---------- 启动: 立即上报一次 + 15s 心跳 (保持设备 Online) ---------- */
@@ -162,7 +189,7 @@ export const ElaraPlugin = async ({ client }) => {
     event: async ({ event }) => {
       switch (event.type) {
         case "session.idle":
-        case "tool.execute.after":
+          seen.clear();                 // 会话结束, 清空 token 去重表防止无界增长
           done();                       // CELEBRATE, 4 秒后复位 idle
           break;
 
@@ -171,11 +198,16 @@ export const ElaraPlugin = async ({ client }) => {
           report();
           break;
 
-        case "session.status":
-        case "session.updated":
-          if (event.properties?.status === "running" || event.properties?.session?.status === "running")
+        case "session.status": {
+          const st = event.properties?.status?.type;  // SessionStatus: "idle" | "retry" | "busy"
+          if (st === "busy") {
             busy("working...");         // running=3 → Persona BUSY
+          } else if (st === "retry") {  // 重试 → waiting=1 → Persona ATTENTION
+            state.running = 0; state.waiting = 1; state.completed = false; state.msg = "retrying...";
+            report();
+          }
           break;
+        }
 
         case "message.updated": {
           const tk = event.properties?.info?.tokens;
@@ -186,7 +218,6 @@ export const ElaraPlugin = async ({ client }) => {
           const mid = event.properties.info.id || "";
           const prev = mid ? (seen.get(mid) || 0) : 0;
           if (total > prev) {
-            state.tokens = total - prev;
             state.tokens_today += total - prev;
             if (mid) seen.set(mid, total);
             report();
@@ -202,16 +233,25 @@ export const ElaraPlugin = async ({ client }) => {
           const perm = p.permission || "tool";
           const pat = Array.isArray(p.patterns) ? p.patterns.join(" ") : "";
           prompt = { id, tool: perm.slice(0, 18), hint: (perm + " " + pat).slice(0, 42) };
+          debug(`permission asked: ${perm} -> ${id}`);
           report();                     // 设备弹出审批框 (A=批准 once / B=拒绝 deny)
           break;
         }
 
-        case "permission.replied":
+        case "permission.replied": {
+          debug("permission.replied event");
           prompt = null;                // opencode 侧已回复, 撤销设备端弹窗
+          const rid = event.properties?.requestID;
+          if (rid) {
+            // 清理该权限对应的 pending 条目, 防止 Map 无界增长
+            for (const [id, p] of pending) if (p.permissionID === rid) pending.delete(id);
+          }
           break;
+        }
       }
     },
 
     "tool.execute.before": (input) => busy(`tool: ${(input.tool || "").slice(0, 40)}`),
+    "tool.execute.after": () => done(),   // 顶层 hook (非 event), 工具执行完成 → CELEBRATE
   };
 };
