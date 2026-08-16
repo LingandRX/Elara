@@ -145,11 +145,12 @@ static void info_nav_btn_cb(lv_event_t *e);
 /* ============ 菜单文本 ============ */
 static const char *s_menu_texts[BUDDY_MENU_MAX] = {
     LV_SYMBOL_SETTINGS " Settings",
-    LV_SYMBOL_POWER  " Shutdown",
-    LV_SYMBOL_WARNING  " Help",
-    LV_SYMBOL_HOME   " About",
-    LV_SYMBOL_PLAY   " Demo",
-    LV_SYMBOL_CLOSE  " Close",
+    LV_SYMBOL_WIFI    " WiFi",
+    LV_SYMBOL_POWER   " Shutdown",
+    LV_SYMBOL_WARNING " Help",
+    LV_SYMBOL_HOME    " About",
+    LV_SYMBOL_PLAY    " Demo",
+    LV_SYMBOL_CLOSE   " Close",
 };
 
 /* ============ 设置项文本 ============ */
@@ -663,7 +664,7 @@ static void create_menu_overlay(void) {
 
     /* 面板 */
     s_menu_panel = lv_obj_create(s_menu_overlay);
-    lv_obj_set_size(s_menu_panel, 140, 180);
+    lv_obj_set_size(s_menu_panel, 140, 204);
     lv_obj_set_style_bg_color(s_menu_panel, COLOR_BG, 0);
     lv_obj_set_style_border_width(s_menu_panel, 1, 0);
     lv_obj_set_style_border_color(s_menu_panel, COLOR_TEXT_DIM, 0);
