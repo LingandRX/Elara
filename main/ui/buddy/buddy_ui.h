@@ -306,6 +306,13 @@ void buddy_ui_anim_set_persona(uint8_t persona_state);
  */
 void buddy_ui_set_clock(int hour, int minute, int second);
 
+/**
+ * 更新顶部 WiFi 连接标识
+ * @param enabled   WiFi 功能是否开启（设置中关闭时不显示）
+ * @param signal_level 信号强度等级：0=未连接/极弱, 1=弱, 2=中, 3=强
+ */
+void buddy_ui_set_wifi(bool enabled, int signal_level);
+
 /* ============ 电池状态 ============ */
 
 /**

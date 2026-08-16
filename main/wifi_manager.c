@@ -3,6 +3,7 @@
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "nvs_flash.h"
 #include "nvs.h"
 #include "freertos/FreeRTOS.h"
@@ -15,6 +16,14 @@ static int s_retry_count = 0;
 static TimerHandle_t s_retry_timer = NULL;
 static bool s_wifi_initialized = false;
 static bool s_wifi_enabled = false;
+
+/* RSSI 缓存：esp_wifi_sta_get_ap_info 通过事件循环异步返回，
+ * 频繁调用会积压事件且可能读到未就绪数据，故节流查询并缓存。 */
+static int8_t  s_cached_rssi = -100;
+static bool    s_rssi_valid = false;
+static bool    s_rssi_logged = false;
+static int64_t s_last_rssi_poll_us = 0;
+#define RSSI_POLL_INTERVAL_US (2000 * 1000)  /* RSSI 查询节流间隔 2s */
 
 #define WIFI_MAX_RETRY  5
 #define WIFI_RETRY_BASE_MS 1000
@@ -197,6 +206,60 @@ bool wifi_manager_get_ip(char *ip_str, size_t max_len) {
         return true;
     }
     return false;
+}
+
+bool wifi_manager_is_connected(void) {
+    /* 成功获取 IP 即视为已连接 */
+    return s_current_ip[0] != '\0';
+}
+
+/* 节流查询 RSSI 并更新缓存 */
+static void wifi_manager_poll_rssi(void) {
+    if (!wifi_manager_is_connected()) {
+        s_rssi_valid = false;
+        return;
+    }
+    int64_t now_us = esp_timer_get_time();
+    if (now_us - s_last_rssi_poll_us < RSSI_POLL_INTERVAL_US) {
+        return;  /* 节流：距上次查询不足 2s 直接返回缓存 */
+    }
+    s_last_rssi_poll_us = now_us;
+
+    wifi_ap_record_t ap_info;
+    esp_err_t err = esp_wifi_sta_get_ap_info(&ap_info);
+    if (err == ESP_OK) {
+        s_cached_rssi = ap_info.rssi;
+        s_rssi_valid = true;
+        if (!s_rssi_logged) {
+            s_rssi_logged = true;
+            ESP_LOGI(TAG, "RSSI: %d dBm", ap_info.rssi);
+        }
+    } else if (!s_rssi_logged) {
+        s_rssi_logged = true;
+        ESP_LOGW(TAG, "esp_wifi_sta_get_ap_info failed: %s", esp_err_to_name(err));
+    }
+}
+
+bool wifi_manager_get_rssi(int8_t *rssi) {
+    if (!rssi) return false;
+    wifi_manager_poll_rssi();
+    if (s_rssi_valid) {
+        *rssi = s_cached_rssi;
+        return true;
+    }
+    return false;
+}
+
+int wifi_manager_get_signal_level(void) {
+    /* 未连接 → 0 */
+    if (!wifi_manager_is_connected()) return 0;
+    int8_t rssi = 0;
+    /* 已连接但暂无有效 RSSI 缓存（首次查询中/失败）：视为正常连接，避免误显示未连接 */
+    if (!wifi_manager_get_rssi(&rssi)) return 3;
+    if (rssi >= -60) return 3;   /* 强 */
+    if (rssi >= -70) return 2;   /* 中 */
+    if (rssi >= -80) return 1;   /* 弱 */
+    return 0;                    /* 极弱 */
 }
 
 
