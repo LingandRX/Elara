@@ -16,14 +16,14 @@
 
 static const char *TAG = "BUDDY_UI";
 
-/* ============ 颜色定义 ============ */
-#define COLOR_BG       lv_color_hex(0x0A0A1A)  /* 深蓝黑背景 */
-#define COLOR_PANEL    lv_color_hex(0x2104)
-#define COLOR_HOT      lv_color_hex(0xFA20)
+/* ============ 颜色定义 (方案B: 薄荷青 Aqua) ============ */
+#define COLOR_BG       lv_color_hex(0x08141E)  /* 深蓝黑背景 */
+#define COLOR_PANEL    lv_color_hex(0x0F2A38)
+#define COLOR_HOT      lv_color_hex(0x00D4C8)
 #define COLOR_GREEN    lv_color_hex(0x07E0)
 #define COLOR_RED      lv_color_hex(0xF800)
 #define COLOR_TEXT     lv_color_hex(0xFFFFFF)
-#define COLOR_TEXT_DIM lv_color_hex(0xA0A0AA)
+#define COLOR_TEXT_DIM lv_color_hex(0x6E92A8)
 
 /* ============ 屏幕尺寸 ============ */
 #define SCREEN_W 170
