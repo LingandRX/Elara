@@ -595,38 +595,62 @@ static void process_boot_key(void) {
             /* 长按 */
             beep(800, 60);
             if (buddy_has_pending_prompt()) {
-                execute_approval_action(false);
+                if (lv_port_disp_lock(-1)) {
+                    execute_approval_action(false);
+                    lv_port_disp_unlock();
+                }
             } else if (ui->reset_open) {
                 ui->reset_open = false;
             } else if (ui->settings_open) {
-                execute_settings_action((BuddySettingItem)ui->settings_sel);
+                if (lv_port_disp_lock(-1)) {
+                    execute_settings_action((BuddySettingItem)ui->settings_sel);
+                    lv_port_disp_unlock();
+                }
             } else if (ui->menu_open) {
-                ui->menu_open = false;
-                buddy_ui_show_menu(false);
-                buddy_anim_invalidate();
+                if (lv_port_disp_lock(-1)) {
+                    ui->menu_open = false;
+                    buddy_ui_show_menu(false);
+                    buddy_anim_invalidate();
+                    lv_port_disp_unlock();
+                }
             } else {
-                ui->menu_open = true;
-                ui->menu_sel = 0;
-                buddy_ui_show_menu(true);
+                if (lv_port_disp_lock(-1)) {
+                    ui->menu_open = true;
+                    ui->menu_sel = 0;
+                    buddy_ui_show_menu(true);
+                    lv_port_disp_unlock();
+                }
             }
         } else {
             /* 短按 */
             beep(1800, 30);
             if (buddy_has_pending_prompt()) {
-                execute_approval_action(true);
+                if (lv_port_disp_lock(-1)) {
+                    execute_approval_action(true);
+                    lv_port_disp_unlock();
+                }
             } else if (ui->reset_open) {
                 ui->reset_sel = (ui->reset_sel + 1) % 3;
                 ui->reset_confirm_idx = 0xFF;
             } else if (ui->settings_open) {
-                ui->settings_sel = (ui->settings_sel + 1) % BUDDY_SET_MAX;
-                buddy_ui_settings_select((BuddySettingItem)ui->settings_sel);
+                if (lv_port_disp_lock(-1)) {
+                    ui->settings_sel = (ui->settings_sel + 1) % BUDDY_SET_MAX;
+                    buddy_ui_settings_select((BuddySettingItem)ui->settings_sel);
+                    lv_port_disp_unlock();
+                }
             } else if (ui->menu_open) {
-                execute_menu_action((BuddyMenuItem)ui->menu_sel);
+                if (lv_port_disp_lock(-1)) {
+                    execute_menu_action((BuddyMenuItem)ui->menu_sel);
+                    lv_port_disp_unlock();
+                }
             } else {
-                ui->display_mode = (ui->display_mode + 1) % DISP_COUNT;
-                if (ui->display_mode == DISP_NORMAL) buddy_ui_set_mode(BUDDY_MODE_NORMAL);
-                else if (ui->display_mode == DISP_PET) buddy_ui_set_mode(BUDDY_MODE_PET);
-                else buddy_ui_set_mode(BUDDY_MODE_INFO);
+                if (lv_port_disp_lock(-1)) {
+                    ui->display_mode = (ui->display_mode + 1) % DISP_COUNT;
+                    if (ui->display_mode == DISP_NORMAL) buddy_ui_set_mode(BUDDY_MODE_NORMAL);
+                    else if (ui->display_mode == DISP_PET) buddy_ui_set_mode(BUDDY_MODE_PET);
+                    else buddy_ui_set_mode(BUDDY_MODE_INFO);
+                    lv_port_disp_unlock();
+                }
             }
         }
     }
