@@ -30,6 +30,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `main/ui/buddy/buddy_anim.c` - Buddy 角色动画（ASCII/GIF 物种）
 - `main/ui/pet_ui.c` - Petdex 动画页面
 - `main/ui/pet_anim.c` - 宠物动画精灵图加载
+- `main/ui/wifi_ui.c` - WiFi 管理页面（扫描列表/连接状态/密码输入，经 wifi_manager API 操作）
 - `main/ui/lvgl_chat_ui.c` - LVGL 聊天界面（兼容遗留）
 - `main/ui/lvgl_widgets.c` - LVGL 自定义控件
 - `main/buddy/buddy_state.c` - Buddy 核心状态机（7 种 Persona 状态、Claude 会话数据、审批提示）
@@ -38,7 +39,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `main/comm/tcp_server.c` - TCP Server（端口 8080，网络指令接收）
 - `main/comm/sntp_sync.c` - SNTP 网络时间同步
 - `main/comm/xfer.c` - 文件上传传输（UART/TCP 共享）
-- `main/wifi_manager.c` - WiFi 管理（连接/配置持久化/SNTP 触发）
+- `main/wifi_manager.c` - WiFi 管理（状态机/扫描/连接/多网络 NVS 持久化于 `wifinet` 命名空间，最多 8 个/开机自动连接/SNTP 触发；UI 层禁止直接调用 esp_wifi_*，须走本模块 API）
 - `main/storage_manager.c` - LittleFS 存储管理（挂载 /spiffs，宠物精灵图目录）
 - `main/battery/battery_monitor.c` - 电池监测（ADC 电压 → 百分比/充电状态）
 - `components/i2c_bsp/` - I2C 主机驱动封装（新 master driver API）
@@ -109,6 +110,40 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `lvgl/lvgl: ^8.4.0`（LVGL 图形库，通过 ESP-IDF 组件管理器）
 - `joltwallet/littlefs: ^1.14.0`（LittleFS 文件系统）
 - `espressif/cjson: ^1.7.19`（JSON 解析，UART/TCP 协议）
+
+## 构建与烧录
+
+ESP-IDF 环境由 **EIM**（ESP-IDF Installation Manager）安装，激活方式与官方文档不同，注意以下要点：
+
+```bash
+# 1. 激活环境（必须用 EIM 的激活脚本）
+. /Users/yulinling/.espressif/tools/activate_idf_v6.0.2.sh
+
+# 2. 构建
+idf.py build
+
+# 3. 烧录（设备接入后；不指定 -p 时自动探测串口）
+idf.py flash
+idf.py -p /dev/cu.usbmodemXXXX flash monitor   # 烧录 + 查看串口日志
+```
+
+**重要**：
+
+- **不要使用** `~/.espressif/v6.0.2/esp-idf/export.sh` 激活——该路径的 Python venv 不存在，会报
+  `ESP-IDF Python virtual environment ... not found`。EIM 的 venv 实际位于
+  `~/.espressif/tools/python/v6.0.2/venv`，由上述激活脚本正确设置。
+- Shell 环境变量不跨命令持久（AI agent / CI 场景），**激活与构建必须放在同一条命令中**：
+  ```bash
+  . /Users/yulinling/.espressif/tools/activate_idf_v6.0.2.sh && idf.py build
+  ```
+- 环境变量（由激活脚本设置，排查工具链问题时参考）：
+  - `IDF_PATH=/Users/yulinling/.espressif/v6.0.2/esp-idf`
+  - `IDF_TOOLS_PATH=/Users/yulinling/.espressif/tools`
+  - `IDF_PYTHON_ENV_PATH=/Users/yulinling/.espressif/tools/python/v6.0.2/venv`
+  - 工具链: `xtensa-esp-elf` (esp-15.2.0) 位于 `~/.espressif/tools/xtensa-esp-elf/`
+- 构建产物: `build/Elara.bin`（bootloader / 分区表在 `build/bootloader/`、`build/partition_table/`）
+- 编译开启 `-Werror`：**所有警告视为错误**。常见坑：`snprintf` 目标缓冲偏小会触发
+  `format-truncation` 错误（GCC 按 int 全范围推算 `%d` 输出宽度，缓冲区务必留足，如 `char key[16]`）。
 
 ## 开发注意事项
 

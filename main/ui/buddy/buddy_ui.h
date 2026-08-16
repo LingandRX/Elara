@@ -38,6 +38,7 @@ typedef enum {
 /* ============ 菜单项 ============ */
 typedef enum {
     BUDDY_MENU_SETTINGS = 0,
+    BUDDY_MENU_WIFI,
     BUDDY_MENU_SHUTDOWN,
     BUDDY_MENU_HELP,
     BUDDY_MENU_ABOUT,

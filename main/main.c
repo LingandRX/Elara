@@ -25,6 +25,7 @@
 #include "ui/buddy/buddy_ui.h"
 #include "ui/buddy/buddy_anim.h"
 #include "ui/pet_ui.h"
+#include "ui/wifi_ui.h"
 #include "comm/uart_comm.h"
 #include "comm/tcp_server.h"
 #include "comm/sntp_sync.h"
@@ -349,7 +350,7 @@ static void buddy_main_loop(void) {
     if (rt->screen_off) {
         loop_ms = 200;
     } else if (rt->napping || in_prompt || ui->menu_open ||
-               ui->settings_open || ui->reset_open ||
+               ui->settings_open || ui->reset_open || wifi_ui_is_visible() ||
                (int32_t)(now_ms - rt->oneshot_until_ms) < 0) {
         loop_ms = 16;
     } else {
@@ -383,6 +384,10 @@ static void execute_menu_action(BuddyMenuItem item) {
         ui->settings_sel = 0;
         buddy_ui_show_settings(true);
         buddy_ui_settings_select(BUDDY_SET_BRIGHTNESS);
+        break;
+    case BUDDY_MENU_WIFI:
+        /* WiFi 管理页面（独立全屏页，BOOT 键返回） */
+        wifi_ui_show(true);
         break;
     case BUDDY_MENU_SHUTDOWN:
         ESP_LOGI(TAG, "Shutdown requested");
@@ -595,6 +600,15 @@ static void process_boot_key(void) {
             return;
         }
 
+        /* WiFi 管理页面: 按 BOOT 返回主界面 */
+        if (wifi_ui_is_visible()) {
+            if (lv_port_disp_lock(-1)) {
+                wifi_ui_show(false);
+                lv_port_disp_unlock();
+            }
+            return;
+        }
+
         if (rt->swallow_btn_a) {
             rt->swallow_btn_a = false;
         } else if (press_dur >= 600) {
@@ -716,6 +730,9 @@ void app_main(void) {
 
     /* 4.5 初始化 Petdex 动画页面 (需在 storage_init 之后) */
     pet_ui_init();
+
+    /* 4.6 初始化 WiFi 管理页面 (页面创建不依赖 wifi_manager，可先创建) */
+    wifi_ui_init();
 
     /* 5. 初始化 Buddy 核心 */
     buddy_state_init();
