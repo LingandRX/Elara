@@ -252,12 +252,6 @@ bool buddy_ui_is_settings_visible(void);
 void buddy_ui_settings_select(BuddySettingItem item);
 
 /**
- * 获取当前选中的设置项
- * @return 设置项索引
- */
-BuddySettingItem buddy_ui_get_settings_selected(void);
-
-/**
  * 更新设置项的开关状态显示
  * @param item 设置项
  * @param on   开关状态

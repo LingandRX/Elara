@@ -102,7 +102,6 @@ static bool s_settings_visible = false;
 static bool s_approval_visible = false;
 static InfoPageIdx s_info_idx = INFO_PAGE_ABOUT;
 static int s_menu_selected = 0;
-static int s_settings_selected = 0;
 static uint32_t s_claude_refresh_ms = 0;   /* INFO-Claude 页实时刷新节流 */
 
 /* 时钟 */
@@ -702,7 +701,6 @@ static void settings_event_cb(lv_event_t *e) {
     lv_obj_t *target = lv_event_get_target(e);
     for (int i = 0; i < BUDDY_SET_MAX; i++) {
         if (s_setting_items[i] == target) {
-            s_settings_selected = i;
             ESP_LOGI(TAG, "Settings clicked: %d", i);
             for (int j = 0; j < BUDDY_SET_MAX; j++) {
                 lv_obj_set_style_bg_color(s_setting_items[j], (j == i) ? COLOR_HOT : COLOR_PANEL, 0);
@@ -1091,7 +1089,6 @@ void buddy_ui_show_settings(bool show) {
     obj_set_hidden(s_settings_overlay, !show);
     if (show) {
         lv_obj_move_foreground(s_settings_overlay);
-        s_settings_selected = 0;
         for (int i = 0; i < BUDDY_SET_MAX; i++) {
             lv_obj_set_style_bg_color(s_setting_items[i], (i == 0) ? COLOR_HOT : COLOR_PANEL, 0);
         }
@@ -1104,14 +1101,9 @@ bool buddy_ui_is_settings_visible(void) {
 
 void buddy_ui_settings_select(BuddySettingItem item) {
     if (item < 0 || item >= BUDDY_SET_MAX) return;
-    s_settings_selected = item;
     for (int i = 0; i < BUDDY_SET_MAX; i++) {
         lv_obj_set_style_bg_color(s_setting_items[i], (i == item) ? COLOR_HOT : COLOR_PANEL, 0);
     }
-}
-
-BuddySettingItem buddy_ui_get_settings_selected(void) {
-    return (BuddySettingItem)s_settings_selected;
 }
 
 void buddy_ui_settings_set_toggle(BuddySettingItem item, bool on) {
