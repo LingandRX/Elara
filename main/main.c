@@ -317,6 +317,12 @@ static void buddy_main_loop(void) {
                 }
             }
 
+            /* 更新顶部 WiFi 连接标识（含信号强弱，需在 LVGL 锁内操作 UI） */
+            {
+                BuddySettings *wset = buddy_settings_get();
+                buddy_ui_set_wifi(wset->wifi, wifi_manager_get_signal_level());
+            }
+
             /* 更新 PET 用量显示 (opencode Zen 套餐 rolling/weekly/monthly) */
             int ur = (claude->usage_rolling == 0xFF) ? 0 : claude->usage_rolling;
             int uw = (claude->usage_weekly == 0xFF) ? 0 : claude->usage_weekly;

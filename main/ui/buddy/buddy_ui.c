@@ -20,8 +20,8 @@ static const char *TAG = "BUDDY_UI";
 #define COLOR_BG       lv_color_hex(0x08141E)  /* 深蓝黑背景 */
 #define COLOR_PANEL    lv_color_hex(0x0F2A38)
 #define COLOR_HOT      lv_color_hex(0x00D4C8)
-#define COLOR_GREEN    lv_color_hex(0x07E0)
-#define COLOR_RED      lv_color_hex(0xF800)
+#define COLOR_GREEN    lv_color_hex(0x00FF00)  /* 纯绿（0x07E0 是 RGB565 值，lv_color_hex 需 0xRRGGBB） */
+#define COLOR_RED      lv_color_hex(0xFF0000)  /* 纯红（0xF800 同理） */
 #define COLOR_TEXT     lv_color_hex(0xFFFFFF)
 #define COLOR_TEXT_DIM lv_color_hex(0x6E92A8)
 
@@ -47,6 +47,8 @@ static lv_obj_t *s_anim_canvas = NULL;
 static SpritePet *s_sprite_pet = NULL;   /* 动画 pet (精灵图) */
 static bool s_pet_animated = false;      /* true=动画 pet, false=ASCII pet */
 static lv_obj_t *s_clock_label = NULL;
+static lv_obj_t *s_wifi_label = NULL;
+static int s_last_wifi_level = -1;   /* 诊断：上次设置的信号等级 */
 static lv_obj_t *s_hud_panel = NULL;
 static lv_obj_t *s_hud_label = NULL;
 static lv_obj_t *s_battery_label = NULL;
@@ -235,6 +237,13 @@ static void create_normal_page(void) {
     lv_obj_set_style_text_color(s_battery_label, COLOR_TEXT, 0);
     lv_obj_set_style_text_font(s_battery_label, LV_FONT_DEFAULT, 0);
     lv_obj_align(s_battery_label, LV_ALIGN_TOP_RIGHT, -4, 4);
+
+    /* WiFi 连接标识（header 顶部，电池左侧） */
+    s_wifi_label = lv_label_create(s_normal_page);
+    lv_label_set_text(s_wifi_label, LV_SYMBOL_WIFI);
+    lv_obj_set_style_text_color(s_wifi_label, COLOR_TEXT_DIM, 0);
+    lv_obj_set_style_text_font(s_wifi_label, LV_FONT_DEFAULT, 0);
+    lv_obj_align(s_wifi_label, LV_ALIGN_TOP_RIGHT, -54, 4);
 
     /* HUD 面板 */
     s_hud_panel = lv_obj_create(s_normal_page);
@@ -1180,6 +1189,35 @@ void buddy_ui_set_battery(int percentage, bool charging) {
     else if (percentage < 75) symbol = charging ? LV_SYMBOL_CHARGE : LV_SYMBOL_BATTERY_2;
     else if (percentage < 90) symbol = charging ? LV_SYMBOL_CHARGE : LV_SYMBOL_BATTERY_3;
     lv_label_set_text_fmt(s_battery_label, "%s %d%%", symbol, percentage);
+}
+
+/* ============ WiFi 状态 ============ */
+
+/**
+ * 更新顶部 WiFi 连接标识
+ * @param enabled   WiFi 功能是否开启（设置中关闭时不显示）
+ * @param signal_level 信号强度等级：0=未连接/极弱, 1=弱, 2=中, 3=强
+ */
+void buddy_ui_set_wifi(bool enabled, int signal_level) {
+    if (!s_wifi_label) return;
+    if (!enabled) {
+        lv_obj_add_flag(s_wifi_label, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+    lv_obj_clear_flag(s_wifi_label, LV_OBJ_FLAG_HIDDEN);
+    lv_label_set_text(s_wifi_label, LV_SYMBOL_WIFI);
+    /* 按信号等级着色：强=绿, 中=薄荷青, 弱=红, 未连接/极弱=暗色 */
+    lv_color_t color = COLOR_TEXT_DIM;
+    if (signal_level >= 3)      color = COLOR_GREEN;
+    else if (signal_level == 2) color = COLOR_HOT;
+    else if (signal_level == 1) color = COLOR_RED;
+    lv_obj_set_style_text_color(s_wifi_label, color, 0);
+
+    /* 诊断：信号等级变化时打印一次，确认 UI 实际收到的等级 */
+    if (signal_level != s_last_wifi_level) {
+        s_last_wifi_level = signal_level;
+        ESP_LOGI(TAG, "WiFi indicator level=%d color=0x%04X", signal_level, color.full);
+    }
 }
 
 /* ============ 宠物展示模式 ============ */
