@@ -30,7 +30,11 @@ Elara 上位机客户端
     python elara_host.py --host 192.168.2.155 chat --role ai --text "，我是" --chunk --seq 1
     python elara_host.py --host 192.168.2.155 chat --role ai --text "Elara" --seq 2
 
-    # 上传精灵图 (PNG)
+    # 批量切图并一键上传 (TCP/WiFi)
+    python elara_host.py --host 192.168.2.155 upload-sheet --file spritesheet.webp
+    python elara_host.py --host 192.168.2.155 upload-sheet --file spritesheet.webp --name mypet
+
+    # 上传单张精灵图 (PNG)
     python elara_host.py --host 192.168.2.155 upload --file sprite.png --path idle/frame_001.png
 
     # 角色包传输 (base64 分块)
@@ -223,7 +227,7 @@ def send_json(transport: Transport, msg, label: str = "") -> list:
     return transport.drain(0.5)
 
 
-def upload_file(transport: Transport, filepath: str, path: str = None):
+def upload_file(transport: Transport, filepath: str, path: str = None, quiet: bool = False):
     """通过 upload 命令上传 PNG 精灵图 (JSON 握手 + 原始二进制)."""
     if not os.path.isfile(filepath):
         sys.exit(f"文件不存在: {filepath}")
@@ -234,7 +238,8 @@ def upload_file(transport: Transport, filepath: str, path: str = None):
         req["path"] = path
     payload = (json.dumps(req, ensure_ascii=False) + "\n").encode("utf-8")
     transport.send(payload)
-    print(f">> upload {payload.decode('utf-8', errors='replace').strip()}")
+    if not quiet:
+        print(f">> upload {payload.decode('utf-8', errors='replace').strip()}")
 
     def wait_upload_event(action, timeout=5.0):
         """等待设备发送 upload 事件 (ready / finished)."""
@@ -246,16 +251,16 @@ def upload_file(transport: Transport, filepath: str, path: str = None):
                 except json.JSONDecodeError:
                     continue
                 if m.get("type") == "error":
-                    print(f"!! 设备错误: {m.get('msg')}")
-                    sys.exit(1)
+                    if not quiet:
+                        print(f"!! 设备错误: {m.get('msg')}")
+                    return False
                 if m.get("type") == "event" and m.get("source") == "upload" and m.get("action") == action:
                     return True
         return False
 
-    if wait_upload_event("ready"):
-        print(f"设备就绪, 开始发送 {size} 字节...")
-    else:
-        print("设备未就绪 (未收到 upload ready), 仍尝试发送...")
+    if not wait_upload_event("ready"):
+        if not quiet:
+            print("设备未就绪 (未收到 upload ready), 仍尝试发送...")
 
     with open(filepath, "rb") as f:
         while True:
@@ -265,11 +270,117 @@ def upload_file(transport: Transport, filepath: str, path: str = None):
             transport.send(chunk)
             time.sleep(0.01)
 
-    print("二进制数据发送完成, 等待设备确认...")
+    if not quiet:
+        print("二进制数据发送完成, 等待设备确认...")
     if wait_upload_event("finished", timeout=10.0):
-        print("[EVT] upload finished")
+        if not quiet:
+            print("[EVT] upload finished")
+        return True
     else:
-        print("!! 未收到 upload finished, 上传可能未完成")
+        if not quiet:
+            print("!! 未收到 upload finished, 上传可能未完成")
+        return False
+
+
+def print_progress_bar(iteration: int, total: int, prefix: str = '上传进度:', suffix: str = '',
+                       length: int = 25, fill: str = '█', empty: str = '-'):
+    """控制台单行原位刷新进度条 (使用 ANSI 控制码清除光标后内容)."""
+    percent = f"{100 * (iteration / float(total)):.1f}"
+    filled_len = int(length * iteration // total)
+    bar = fill * filled_len + empty * (length - filled_len)
+    # \r 回到行首, \033[K 清除当前行从光标到末尾的所有字符 (避免换行与残影)
+    sys.stdout.write(f"\r\033[K{prefix} [{bar}] {percent}% {suffix}")
+    sys.stdout.flush()
+    if iteration >= total:
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+
+
+def slice_and_upload_spritesheet(transport: Transport, filepath: str, name: str = None,
+                                 target_w: int = 96, target_h: int = 104):
+    """
+    自动切图并批量上传所有动作序列帧至设备 (TCP/WiFi).
+
+    标准 9 行动作映射:
+      0: idle (6 帧)
+      1: run_right (8 帧)
+      2: run_left (8 帧)
+      3: waving (4 帧)
+      4: jumping (5 帧)
+      5: failed (8 帧)
+      6: waiting (6 帧)
+      7: action (6 帧)
+      8: inspect (6 帧)
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        sys.exit("切图需要 Pillow 库: pip install pillow")
+
+    if not os.path.isfile(filepath):
+        sys.exit(f"精灵图文件不存在: {filepath}")
+
+    print(f"[*] 正在读取精灵图: {filepath}")
+    im = Image.open(filepath).convert("RGBA")
+    w, h = im.size
+
+    DIR_NAMES = [
+        "idle", "run_right", "run_left", "waving", "jumping",
+        "failed", "waiting", "action", "inspect"
+    ]
+    FRAME_COUNTS = [6, 8, 8, 4, 5, 8, 6, 6, 6]
+
+    cell_w = w // 8
+    cell_h = h // 9
+
+    import tempfile
+    temp_dir = tempfile.mkdtemp(prefix="elara_slice_")
+
+    slices = []
+    print(f"[*] 规格: {w}x{h} (单格 {cell_w}x{cell_h}) -> 缩放输出: {target_w}x{target_h}")
+    if name:
+        print(f"[*] 宠物名称/路径前缀: {name}")
+
+    try:
+        for r, (state_dir, frame_count) in enumerate(zip(DIR_NAMES, FRAME_COUNTS)):
+            state_path_prefix = f"{name}/{state_dir}" if name else state_dir
+            dest_dir = os.path.join(temp_dir, state_path_prefix)
+            os.makedirs(dest_dir, exist_ok=True)
+
+            for c in range(frame_count):
+                crop_box = (c * cell_w, r * cell_h, (c + 1) * cell_w, (r + 1) * cell_h)
+                frame_img = im.crop(crop_box)
+                if target_w and target_h:
+                    frame_img = frame_img.resize((target_w, target_h), Image.Resampling.LANCZOS)
+
+                filename = f"frame_{c + 1:03d}.png"
+                out_path = os.path.join(dest_dir, filename)
+                frame_img.save(out_path, format="PNG", optimize=True)
+
+                remote_path = f"{state_path_prefix}/{filename}"
+                slices.append((out_path, remote_path))
+
+        total_files = len(slices)
+        print(f"[+] 切图完成! 共 {total_files} 帧，开始通过 TCP/WiFi 上传...\n")
+
+        start_time = time.time()
+        for idx, (local_file, remote_path) in enumerate(slices, 1):
+            short_path = remote_path if len(remote_path) <= 24 else ("..." + remote_path[-21:])
+            print_progress_bar(idx, total_files, prefix="上传进度:",
+                               suffix=f"[{idx}/{total_files}] {short_path}", length=25)
+            ok = upload_file(transport, local_file, path=remote_path, quiet=True)
+            if not ok:
+                print(f"\n!! 上传失败: {remote_path}")
+                sys.exit(1)
+            print_progress_bar(idx, total_files, prefix="上传进度:",
+                               suffix=f"[{idx}/{total_files}] {short_path}", length=25)
+            time.sleep(0.01)
+
+        elapsed = time.time() - start_time
+        print(f"\n[✓] 全部上传成功! 共 {total_files} 帧图片 (耗时: {elapsed:.2f}s)\n")
+    finally:
+        import shutil
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def xfer_char_file(transport: Transport, char: str, filepath: str):
@@ -324,6 +435,7 @@ def interactive(transport: Transport):
   owner <name>          设置主人名
   snap                  获取状态快照
   upload <file> [path]  上传精灵图
+  upload-sheet <file> [--name NAME]  批量切图并上传整套动作 (WebP/PNG)
   xfer <char> <file>    角色包文件传输
   help / exit           帮助 / 退出
         """)
@@ -411,6 +523,10 @@ def main():
     add_cmd("snap")
     add_cmd("upload", [{"flags": ["--file"], "opts": {"required": True}},
                        {"flags": ["--path"], "opts": {}}])
+    add_cmd("upload-sheet", [{"flags": ["--file"], "opts": {"required": True, "help": "整张精灵图文件路径 (如 .webp / .png)"}},
+                             {"flags": ["--name"], "opts": {"help": "自定义精灵名称/前缀 (可选)"}},
+                             {"flags": ["--width"], "opts": {"type": int, "default": 96, "help": "单帧宽度 (默认 96)"}},
+                             {"flags": ["--height"], "opts": {"type": int, "default": 104, "help": "单帧高度 (默认 104)"}}])
     add_cmd("xfer", [{"flags": ["--char"], "opts": {"required": True}},
                      {"flags": ["--file"], "opts": {"required": True}}])
 
@@ -460,6 +576,9 @@ def main():
             send_json(transport, cmd_snap(), label="snap")
         elif args.command == "upload":
             upload_file(transport, args.file, args.path)
+        elif args.command == "upload-sheet":
+            slice_and_upload_spritesheet(transport, args.file, name=args.name,
+                                         target_w=args.width, target_h=args.height)
         elif args.command == "xfer":
             xfer_char_file(transport, args.char, args.file)
     except (BrokenPipeError, ConnectionResetError, socket.error) as e:
