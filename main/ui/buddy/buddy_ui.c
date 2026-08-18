@@ -7,6 +7,7 @@
 #include "buddy_ui.h"
 #include "buddy_anim.h"
 #include "sprite_pet.h"
+#include "pet_ui.h"
 #include "buddy/buddy_state.h"
 #include "esp_log.h"
 #include "esp_system.h"
@@ -146,6 +147,7 @@ static void info_nav_btn_cb(lv_event_t *e);
 static const char *s_menu_texts[BUDDY_MENU_MAX] = {
     LV_SYMBOL_SETTINGS " Settings",
     LV_SYMBOL_WIFI    " WiFi",
+    LV_SYMBOL_IMAGE   " Petdex",
     LV_SYMBOL_POWER   " Shutdown",
     LV_SYMBOL_WARNING " Help",
     LV_SYMBOL_HOME    " About",
@@ -605,6 +607,15 @@ static void overlay_click_close_cb(lv_event_t *e) {
 
 /* 驱动层滑动检测回调 (绕过 LVGL 手势系统, 见 lvgl_touch.c) */
 static void info_swipe_cb(lv_dir_t dir) {
+    if (pet_ui_is_visible()) {
+        ESP_LOGI(TAG, "Petdex swipe: dir=%d", dir);
+        if (dir == LV_DIR_LEFT) {
+            pet_ui_next_state();
+        } else if (dir == LV_DIR_RIGHT) {
+            pet_ui_prev_state();
+        }
+        return;
+    }
     if (s_mode != BUDDY_MODE_INFO) return;  /* 仅 Info 页面响应滑动 */
     if (dir == LV_DIR_RIGHT) {
         buddy_ui_info_prev();
@@ -664,7 +675,7 @@ static void create_menu_overlay(void) {
 
     /* 面板 */
     s_menu_panel = lv_obj_create(s_menu_overlay);
-    lv_obj_set_size(s_menu_panel, 140, 204);
+    lv_obj_set_size(s_menu_panel, 140, 228);
     lv_obj_set_style_bg_color(s_menu_panel, COLOR_BG, 0);
     lv_obj_set_style_border_width(s_menu_panel, 1, 0);
     lv_obj_set_style_border_color(s_menu_panel, COLOR_TEXT_DIM, 0);

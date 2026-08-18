@@ -47,6 +47,16 @@ void pet_ui_set_state(PetAnimState state);
  */
 void pet_ui_set_state_by_name(const char *name);
 
+/**
+ * 切换到下一个动画状态
+ */
+void pet_ui_next_state(void);
+
+/**
+ * 切换到上一个动画状态
+ */
+void pet_ui_prev_state(void);
+
 #ifdef __cplusplus
 }
 #endif
