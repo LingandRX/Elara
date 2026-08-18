@@ -156,21 +156,29 @@ void lv_port_disp_unlock(void) {
 }
 
 /**
- * Rounder 回调 - SH8601 要求坐标对齐到 2 的倍数
+ * Rounder 回调 - 坐标对齐到 2 的倍数
  * LVGL v8 使用 disp_drv.rounder_cb
  */
 static void disp_rounder(lv_disp_drv_t *disp_drv, lv_area_t *area)
 {
+    /* 边界保护 */
+    if (area->x1 < 0) area->x1 = 0;
+    if (area->y1 < 0) area->y1 = 0;
+    if (area->x2 >= LCD_WIDTH) area->x2 = LCD_WIDTH - 1;
+    if (area->y2 >= LCD_HEIGHT) area->y2 = LCD_HEIGHT - 1;
+
     /* 起点向下取偶，终点向上取奇，确保宽高为偶数 */
     area->x1 = (area->x1 >> 1) << 1;
     area->y1 = (area->y1 >> 1) << 1;
     area->x2 = ((area->x2 >> 1) << 1) + 1;
     area->y2 = ((area->y2 >> 1) << 1) + 1;
+
+    if (area->x2 >= LCD_WIDTH) area->x2 = LCD_WIDTH - 1;
+    if (area->y2 >= LCD_HEIGHT) area->y2 = LCD_HEIGHT - 1;
 }
 
 /**
  * 刷新回调 - 将 LVGL 缓冲区数据写入 LCD
- * SH8601 有 SH8601_X_OFFSET 像素的 X 偏移需要补偿
  */
 static void disp_flush(lv_disp_drv_t *disp_drv, const lv_area_t *area, lv_color_t *color_p) {
     int x1 = area->x1;
@@ -178,9 +186,21 @@ static void disp_flush(lv_disp_drv_t *disp_drv, const lv_area_t *area, lv_color_
     int y1 = area->y1;
     int y2 = area->y2;
 
-    /* 使用 esp_lcd API 绘制位图 */
+    /* 限制在有效屏幕范围内 */
+    if (x1 < 0) x1 = 0;
+    if (y1 < 0) y1 = 0;
+    if (x2 >= LCD_WIDTH) x2 = LCD_WIDTH - 1;
+    if (y2 >= LCD_HEIGHT) y2 = LCD_HEIGHT - 1;
+
+    /* 校验区域合法性 (start 必须小于 end) */
+    if (x1 > x2 || y1 > y2) {
+        lv_disp_flush_ready(disp_drv);
+        return;
+    }
+
+    /* 使用 esp_lcd API 绘制位图 (x_end = x2 + 1, y_end = y2 + 1) */
     esp_lcd_panel_draw_bitmap(_panel, x1, y1, x2 + 1, y2 + 1, color_p);
 
-    /* 注意：不在此处调用 lv_disp_flush_ready，
+    /* 注意：正常情况下不在此处调用 lv_disp_flush_ready，
      * 由 SPI 传输完成回调 (on_color_trans_done) 触发 */
 }

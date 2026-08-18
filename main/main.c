@@ -145,16 +145,17 @@ static void update_clock(void) {
     }
 }
 
-/* LVGL 处理任务 */
+/* LVGL 处理任务 (保证触摸事件以最高 20ms 延时得到即时响应) */
 static void lvgl_handler_task(void *pvParam) {
     (void)pvParam;
     while (1) {
-        uint32_t delay = 500;
+        uint32_t delay = 20;
         if (lv_port_disp_lock(-1)) {
             delay = lv_task_handler();
             lv_port_disp_unlock();
         }
-        vTaskDelay(pdMS_TO_TICKS(delay > 500 ? 500 : (delay < 1 ? 1 : delay)));
+        /* 限制最大休眠为 20ms，避免高延迟 */
+        vTaskDelay(pdMS_TO_TICKS(delay > 20 ? 20 : (delay < 1 ? 1 : delay)));
     }
 }
 
@@ -298,8 +299,8 @@ static void buddy_main_loop(void) {
         buddy_ui_set_battery(battery_get_percentage(), battery_is_charging());
     }
 
-    /* 12. 渲染更新 */
-    if (!rt->napping && !rt->screen_off) {
+    /* 12. 渲染更新（仅在主界面显示时才进行 Buddy 动画渲染，避免全屏子页面打开时 CPU 争抢） */
+    if (!rt->napping && !rt->screen_off && !pet_ui_is_visible() && !wifi_ui_is_visible()) {
         if (lv_port_disp_lock(50)) {
             /* 更新动画 pet（精灵图）状态 */
             buddy_ui_anim_set_persona(rt->active_state);
@@ -351,6 +352,7 @@ static void buddy_main_loop(void) {
         loop_ms = 200;
     } else if (rt->napping || in_prompt || ui->menu_open ||
                ui->settings_open || ui->reset_open || wifi_ui_is_visible() ||
+               pet_ui_is_visible() ||
                (int32_t)(now_ms - rt->oneshot_until_ms) < 0) {
         loop_ms = 16;
     } else {
@@ -388,6 +390,10 @@ static void execute_menu_action(BuddyMenuItem item) {
     case BUDDY_MENU_WIFI:
         /* WiFi 管理页面（独立全屏页，BOOT 键返回） */
         wifi_ui_show(true);
+        break;
+    case BUDDY_MENU_PETDEX:
+        /* Petdex 动画展示页面（独立全屏页，BOOT 键返回） */
+        pet_ui_show(true);
         break;
     case BUDDY_MENU_SHUTDOWN:
         ESP_LOGI(TAG, "Shutdown requested");

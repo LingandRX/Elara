@@ -132,45 +132,54 @@ static void reset_deadloop_effect(void) {
     }
 }
 
-/* 检查并更新精灵图 */
-static void check_sprite_image(void) {
-    const char *fs_path = "/spiffs/sprite.png";
-    const char *lv_path = "S:/spiffs/sprite.png";
-    const char *img_src = lv_path;
-    /* 序列帧路径需保持持久 (lv_img_set_src 保存的是指针) */
-    static char seq_lv_path[64];
-    
-    /* 检查是否处于序列帧模式 */
-    const PetAnimConfig *cfg = pet_anim_get_config(current_state);
-    if (cfg) {
-        char seq_fs_path[64];
-        snprintf(seq_fs_path, sizeof(seq_fs_path), "/spiffs/sprites/%s/frame_001.png", cfg->dir_name);
+/* 资源模式标志缓存（避免每帧/每次切换重复 LittleFS I/O 查找） */
+typedef enum {
+    PET_SRC_NONE = 0,
+    PET_SRC_SEQUENCE,
+    PET_SRC_SPRITESHEET
+} PetSourceMode;
 
-        if (storage_file_exists(seq_fs_path)) {
-            snprintf(seq_lv_path, sizeof(seq_lv_path), "S:/spiffs/sprites/%s/frame_001.png", cfg->dir_name);
-            lv_img_header_t header;
-            if (lv_img_decoder_get_info(seq_lv_path, &header) == LV_RES_OK) {
-                ESP_LOGI(TAG, "Mode: Sequence frames (%s)", cfg->name);
-                img_src = seq_lv_path;  /* 初始指向小帧图, 避免解码整张精灵图 */
-            } else {
-                ESP_LOGE(TAG, "Failed to decode frame_001 at %s", seq_lv_path);
-            }
-            goto setup_viewport;
+static PetSourceMode s_source_mode = PET_SRC_NONE;
+static bool s_has_seq_for_state[PET_ANIM_MAX] = {false};
+static bool s_probed_resources = false;
+
+/* 检查并更新精灵图配置 (只在初始化或首次使用时探测文件系统) */
+static void probe_resources_once(void) {
+    if (s_probed_resources) return;
+    s_probed_resources = true;
+
+    /* 检测各状态的序列帧目录 */
+    for (int i = 0; i < PET_ANIM_MAX; i++) {
+        const PetAnimConfig *cfg = pet_anim_get_config((PetAnimState)i);
+        if (cfg) {
+            char path[64];
+            snprintf(path, sizeof(path), "/spiffs/sprites/%s/frame_001.png", cfg->dir_name);
+            s_has_seq_for_state[i] = storage_file_exists(path);
         }
     }
 
-    if (storage_file_exists(fs_path)) {
-        FILE *f = fopen(fs_path, "rb");
-        if (f) {
-            uint8_t magic[4];
-            fread(magic, 1, 4, f);
-            fclose(f);
-            if (magic[0] != 0x89 || magic[1] != 0x50) {
-                ESP_LOGE(TAG, "sprite.png exists but INVALID PNG header!");
-                goto show_placeholder;
-            }
-        }
-        ESP_LOGI(TAG, "Mode: Sprite sheet (/spiffs/sprite.png)");
+    /* 检测 sprite.png */
+    if (storage_file_exists("/spiffs/sprite.png")) {
+        s_source_mode = PET_SRC_SPRITESHEET;
+    } else {
+        s_source_mode = PET_SRC_NONE;
+    }
+}
+
+static void check_sprite_image(void) {
+    probe_resources_once();
+
+    const PetAnimConfig *cfg = pet_anim_get_config(current_state);
+    static char seq_lv_path[64];
+    const char *img_src = NULL;
+
+    if (cfg && s_has_seq_for_state[current_state]) {
+        snprintf(seq_lv_path, sizeof(seq_lv_path), "S:/spiffs/sprites/%s/frame_001.png", cfg->dir_name);
+        img_src = seq_lv_path;
+        goto setup_viewport;
+    } else if (s_source_mode == PET_SRC_SPRITESHEET) {
+        img_src = "S:/spiffs/sprite.png";
+        goto setup_viewport;
     } else {
         goto show_placeholder;
     }
@@ -204,32 +213,24 @@ show_placeholder:
 }
 
 void pet_ui_refresh(void) {
+    s_probed_resources = false;
     lv_img_cache_invalidate_src(NULL);
     check_sprite_image();
 }
 
-/* 动画定时器回调 */
-static void anim_timer_cb(lv_timer_t *timer) {
+/* 渲染单帧画面 */
+static void render_current_frame(void) {
     const PetAnimConfig *cfg = pet_anim_get_config(current_state);
     if (!cfg) return;
-
-    current_frame++;
-    if (current_frame > cfg->frames) {
-        current_frame = 1;
-    }
 
     if (frame_label) {
         lv_label_set_text_fmt(frame_label, "Frame: %d / %d", current_frame, cfg->frames);
     }
 
     if (pet_img && !lv_obj_has_flag(lv_obj_get_parent(pet_img), LV_OBJ_FLAG_HIDDEN)) {
-        static char seq_fs_path[64];
-        static char seq_lv_path[64];
-        snprintf(seq_fs_path, sizeof(seq_fs_path), "/spiffs/sprites/%s/frame_%03d.png", cfg->dir_name, current_frame);
-        snprintf(seq_lv_path, sizeof(seq_lv_path), "S:/spiffs/sprites/%s/frame_%03d.png", cfg->dir_name, current_frame);
-
-        if (storage_file_exists(seq_fs_path)) {
-            lv_img_cache_invalidate_src(NULL); 
+        if (s_has_seq_for_state[current_state]) {
+            static char seq_lv_path[64];
+            snprintf(seq_lv_path, sizeof(seq_lv_path), "S:/spiffs/sprites/%s/frame_%03d.png", cfg->dir_name, current_frame);
             lv_img_set_src(pet_img, seq_lv_path);
             lv_obj_set_pos(pet_img, 0, 0);
         } else {
@@ -262,9 +263,34 @@ static void anim_timer_cb(lv_timer_t *timer) {
         }
         lv_obj_set_style_bg_color(pet_obj, color, 0);
     }
+}
+
+/* 动画定时器回调 */
+static void anim_timer_cb(lv_timer_t *timer) {
+    const PetAnimConfig *cfg = pet_anim_get_config(current_state);
+    if (!cfg) return;
+
+    current_frame++;
+    if (current_frame > cfg->frames) {
+        current_frame = 1;
+    }
+
+    render_current_frame();
 
     if (timer->period != cfg->interval_ms) {
         lv_timer_set_period(timer, cfg->interval_ms);
+    }
+}
+
+/* 底部导航按钮点击回调 (同时响应 PRESSED 和 CLICKED 快速响应) */
+static void pet_nav_btn_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_SHORT_CLICKED && code != LV_EVENT_CLICKED) return;
+    intptr_t which = (intptr_t)lv_event_get_user_data(e);
+    if (which == 1) {
+        pet_ui_prev_state();
+    } else if (which == 2) {
+        pet_ui_next_state();
     }
 }
 
@@ -274,6 +300,7 @@ void pet_ui_init(void) {
     lv_obj_set_style_bg_color(pet_page, lv_color_hex(0x080810), 0);
     lv_obj_set_style_border_width(pet_page, 0, 0);
     lv_obj_set_style_radius(pet_page, 0, 0);
+    lv_obj_clear_flag(pet_page, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(pet_page, LV_OBJ_FLAG_HIDDEN);
 
     lv_obj_t *title = lv_label_create(pet_page);
@@ -287,6 +314,7 @@ void pet_ui_init(void) {
     lv_obj_set_style_bg_color(pet_obj, lv_color_hex(0x00C864), 0);
     lv_obj_set_style_border_width(pet_obj, 2, 0);
     lv_obj_set_style_border_color(pet_obj, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_clear_flag(pet_obj, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_align(pet_obj, LV_ALIGN_CENTER, 0, -20);
 
     pet_face_label = lv_label_create(pet_obj);
@@ -322,11 +350,32 @@ void pet_ui_init(void) {
     lv_obj_add_flag(deadloop_label, LV_OBJ_FLAG_HIDDEN);
     lv_obj_align(deadloop_label, LV_ALIGN_CENTER, 0, 105);
 
-    lv_obj_t *hint = lv_label_create(pet_page);
-    lv_label_set_text(hint, "Send 'petdex <state>' to change\nPress BOOT key to return");
-    lv_obj_set_style_text_color(hint, lv_color_hex(0x464650), 0);
-    lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -40);
+    /* 底部导航按钮 (完全参考 About 页面的 prev/next 按钮) */
+    lv_obj_t *prev_btn = lv_obj_create(pet_page);
+    lv_obj_set_size(prev_btn, 56, 24);
+    lv_obj_set_style_bg_color(prev_btn, lv_color_hex(0x0F2A38), 0);
+    lv_obj_set_style_border_width(prev_btn, 0, 0);
+    lv_obj_set_style_radius(prev_btn, 6, 0);
+    lv_obj_clear_flag(prev_btn, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(prev_btn, LV_ALIGN_BOTTOM_LEFT, 6, -6);
+    lv_obj_add_event_cb(prev_btn, pet_nav_btn_cb, LV_EVENT_CLICKED, (void *)1);
+    lv_obj_t *prev_label = lv_label_create(prev_btn);
+    lv_label_set_text(prev_label, LV_SYMBOL_LEFT " prev");
+    lv_obj_set_style_text_color(prev_label, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_center(prev_label);
+
+    lv_obj_t *next_btn = lv_obj_create(pet_page);
+    lv_obj_set_size(next_btn, 56, 24);
+    lv_obj_set_style_bg_color(next_btn, lv_color_hex(0x0F2A38), 0);
+    lv_obj_set_style_border_width(next_btn, 0, 0);
+    lv_obj_set_style_radius(next_btn, 6, 0);
+    lv_obj_clear_flag(next_btn, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(next_btn, LV_ALIGN_BOTTOM_RIGHT, -6, -6);
+    lv_obj_add_event_cb(next_btn, pet_nav_btn_cb, LV_EVENT_CLICKED, (void *)2);
+    lv_obj_t *next_label = lv_label_create(next_btn);
+    lv_label_set_text(next_label, "next " LV_SYMBOL_RIGHT);
+    lv_obj_set_style_text_color(next_label, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_center(next_label);
 
     anim_timer = lv_timer_create(anim_timer_cb, 150, NULL);
     lv_timer_pause(anim_timer);
@@ -358,13 +407,26 @@ void pet_ui_set_state(PetAnimState state) {
     const PetAnimConfig *cfg = pet_anim_get_config(state);
     if (cfg && state_label) {
         lv_label_set_text_fmt(state_label, "State: %s", cfg->name);
-        if (anim_timer) lv_timer_set_period(anim_timer, cfg->interval_ms);
+        if (anim_timer) {
+            lv_timer_set_period(anim_timer, cfg->interval_ms);
+            lv_timer_reset(anim_timer);
+        }
     }
-    if (state == PET_ANIM_DEADLOOP) update_deadloop_effect(current_frame);
-    else reset_deadloop_effect();
+    check_sprite_image();
+    render_current_frame();
 }
 
 void pet_ui_set_state_by_name(const char *name) {
     PetAnimState state = pet_anim_get_state_by_name(name);
     pet_ui_set_state(state);
+}
+
+void pet_ui_next_state(void) {
+    PetAnimState next = (PetAnimState)((current_state + 1) % PET_ANIM_MAX);
+    pet_ui_set_state(next);
+}
+
+void pet_ui_prev_state(void) {
+    PetAnimState prev = (current_state == 0) ? (PetAnimState)(PET_ANIM_MAX - 1) : (PetAnimState)(current_state - 1);
+    pet_ui_set_state(prev);
 }
