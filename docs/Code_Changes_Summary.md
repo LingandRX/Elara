@@ -24,7 +24,7 @@ CST816T 部分固件/配置会直接输出与屏幕分辨率匹配的坐标（0~
 ### 注意事项
 - 需实际烧录验证四角坐标是否正确
 - 如果触摸方向与屏幕不一致，可能需要额外做 X/Y 镜像或交换
-- LVGL v8 API 兼容性问题（`lv_indev_drv_init` 等）仍未解决，项目使用的是 LVGL v9.1
+- 触摸驱动使用 LVGL v8 API（`lv_indev_drv_init` 等），与组件约束 `lvgl/lvgl: ^8.4.0` 一致
 
 ---
 
@@ -119,10 +119,9 @@ if (show) {
 
 ## 三、已知遗留问题
 
-### 1. LVGL v8/v9 API 不兼容
+### 1. LVGL 版本（已对齐）
 - `lvgl_touch.c` 使用 `lv_indev_drv_init()`、`lv_indev_drv_register()` 等 **LVGL v8 API**
-- 项目实际链接的是 **LVGL v9.1**，存在潜在的运行时兼容风险
-- 建议：将触摸输入驱动迁移到 LVGL v9 API
+- 组件管理器约束为 **`lvgl/lvgl: ^8.4.0`**，与源码 API 一致；勿再按 v9.1 理解本仓库
 
 ### 2. 触摸硬件复位缺失
 - `touch_bsp.c` 未使用 `TP_RESET` (GPIO17) 对 CST816T 进行硬件复位

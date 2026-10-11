@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-基于 ESP-IDF v6.0.2 的 ESP32-S3 桌面宠物设备项目（Elara Buddy，从 claude-desktop-buddy 迁移），使用 ESP32-S3-Touch-LCD-1.9 开发板，包含 ST7789 LCD 显示屏驱动、CST816T 触摸驱动、Buddy 宠物状态机 UI、WiFi/TCP 网络通信、SNTP 时间同步、电池监测和 LittleFS 存储等功能。
+基于 ESP-IDF（推荐 6.0.x，组件约束 `idf >= 5.0`）的 ESP32-S3 桌面宠物设备项目（Elara Buddy，从 claude-desktop-buddy 迁移），使用 ESP32-S3-Touch-LCD-1.9 开发板，包含 ST7789 LCD 显示屏驱动、CST816T 触摸驱动、Buddy 宠物状态机 UI、WiFi/TCP 网络通信、SNTP 时间同步、电池监测和 LittleFS 存储等功能。
 
 ## 开发板资料
 
@@ -113,44 +113,37 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 构建与烧录
 
-ESP-IDF 环境由 **EIM**（ESP-IDF Installation Manager）安装，激活方式与官方文档不同，注意以下要点：
+先按本机方式激活 ESP-IDF（官方 `export.sh`、EIM 激活脚本或其它安装渠道均可），再在仓库根目录执行：
 
 ```bash
-# 1. 激活环境（必须用 EIM 的激活脚本）
-. /Users/yulinling/.espressif/tools/activate_idf_v6.0.2.sh
+# 1. 激活环境（示例；请替换为你本机的激活方式）
+. $IDF_PATH/export.sh
 
 # 2. 构建
+idf.py set-target esp32s3   # 首次或换芯片时
 idf.py build
+# 或: make build
 
-# 3. 烧录（设备接入后；不指定 -p 时自动探测串口）
+# 3. 烧录（设备接入后；不指定 -p 时通常自动探测串口）
 idf.py flash
-idf.py -p /dev/cu.usbmodemXXXX flash monitor   # 烧录 + 查看串口日志
+idf.py -p /dev/ttyACM0 flash monitor
+# 或: make flash-monitor PORT=/dev/ttyACM0
 ```
 
-**重要**：
+**注意**：
 
-- **不要使用** `~/.espressif/v6.0.2/esp-idf/export.sh` 激活——该路径的 Python venv 不存在，会报
-  `ESP-IDF Python virtual environment ... not found`。EIM 的 venv 实际位于
-  `~/.espressif/tools/python/v6.0.2/venv`，由上述激活脚本正确设置。
-- Shell 环境变量不跨命令持久（AI agent / CI 场景），**激活与构建必须放在同一条命令中**：
-  ```bash
-  . /Users/yulinling/.espressif/tools/activate_idf_v6.0.2.sh && idf.py build
-  ```
-- 环境变量（由激活脚本设置，排查工具链问题时参考）：
-  - `IDF_PATH=/Users/yulinling/.espressif/v6.0.2/esp-idf`
-  - `IDF_TOOLS_PATH=/Users/yulinling/.espressif/tools`
-  - `IDF_PYTHON_ENV_PATH=/Users/yulinling/.espressif/tools/python/v6.0.2/venv`
-  - 工具链: `xtensa-esp-elf` (esp-15.2.0) 位于 `~/.espressif/tools/xtensa-esp-elf/`
+- 依赖真相源见 `main/idf_component.yml`（`idf >= 5.0`，`lvgl/lvgl: ^8.4.0`）。推荐在 ESP-IDF 6.0.x 上构建与联调。
+- Shell 环境变量不跨命令持久（AI agent / CI 场景），**激活与构建必须放在同一条命令中**。
 - 构建产物: `build/Elara.bin`（bootloader / 分区表在 `build/bootloader/`、`build/partition_table/`）
-- 编译开启 `-Werror`：**所有警告视为错误**。常见坑：`snprintf` 目标缓冲偏小会触发
-  `format-truncation` 错误（GCC 按 int 全范围推算 `%d` 输出宽度，缓冲区务必留足，如 `char key[16]`）。
+- 若开启 `-Werror`：**所有警告视为错误**。常见坑：`snprintf` 目标缓冲偏小会触发
+  `format-truncation` 错误（缓冲区务必留足，如 `char key[16]`）。
 
 ## 开发注意事项
 
 - FreeRTOS 节拍率: 1000Hz
 - CPU 频率: 160MHz
 - LCD 使用 ESP-IDF 官方 esp_lcd_panel_st7789 驱动，通过 esp_lcd API 操作
-- UART 协议使用 JSON 格式，支持 status/chat/cmd(clear)/progress/petdex/upload 等命令类型
+- UART/TCP 协议：`petdex`/`upload`/`wifi` 明文命令仍有效；遗留 `status`/`chat`/`progress` **不再入命令队列**（Buddy JSON 由 `buddy_feed_usb_line` 处理）
 - LVGL 版本: 8.4，通过 ESP-IDF 组件管理器集成
 - LVGL 显示缓冲: 双缓冲模式，每缓冲 160 行（LVGL_BUF_LINES=160），DMA 内存分配
 - LVGL tick: 2ms 周期（esp_timer 实现，比 FreeRTOS 任务更精确）

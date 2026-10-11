@@ -188,8 +188,9 @@ static void saved_remove(const char *ssid) {
 
 /**
  * 加载已保存网络列表。
+ * - 优先从 NVS "wifinet" 多网络存储加载；
  * - 首次使用（wifinet 无数据）时从旧版单网络配置 "wifi_cfg" 迁移；
- * - 完全无配置时回退到硬编码凭据（保持原开箱即连行为）；
+ * - 完全无配置时保持空列表（需通过 UI 或 `wifi <ssid> <password>` 配置）；
  * - NVS 数据损坏时跳过坏条目，不会崩溃。
  */
 static void saved_load(void) {
@@ -245,9 +246,8 @@ static void saved_load(void) {
             ESP_LOGI(TAG, "Migrating legacy WiFi config to multi-network store");
             saved_add(legacy_ssid, legacy_pwd, WIFI_AUTH_WPA2_PSK);
         } else {
-            /* 首次烧写且无任何配置：回退硬编码凭据（保持原有行为） */
-            ESP_LOGI(TAG, "No saved WiFi, seeding factory default");
-            saved_add("ZTE-6AkyCN", "07200329", WIFI_AUTH_WPA2_PSK);
+            /* 首次烧写且无任何配置：保持空列表，不写入硬编码凭据 */
+            ESP_LOGI(TAG, "No saved WiFi networks; configure via UI or 'wifi <ssid> <password>'");
         }
     }
 
