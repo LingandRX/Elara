@@ -8,6 +8,7 @@
 #include "buddy_strings.h"
 #include "buddy_ui.h"
 #include "buddy_anim.h"
+#include "buddy_drawer.h"
 #include "sprite_pet.h"
 #include "pet_ui.h"
 #include "buddy/buddy_state.h"
@@ -754,6 +755,8 @@ void buddy_ui_init(void) {
     switch_mode_pages();
     update_info_content();
     buddy_ui_set_clock(12, 0, 0);
+
+    buddy_drawer_init(s_container);
 
     ESP_LOGI(TAG, "Buddy UI initialized");
 }
