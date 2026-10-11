@@ -154,3 +154,4 @@ idf.py -p /dev/ttyACM0 flash monitor
 - 初始化顺序: NVS → LCD → LVGL → 触摸 → UI → 存储 → Petdex → Buddy 状态/统计 → 动画 → 电池 → 通信任务 → WiFi/TCP → 背光
 - WiFi 开关受 `BuddySettings.wifi`（NVS `s_wifi`）控制；TCP Server 始终监听 8080 端口
 - 弹窗交互: 主菜单/设置弹窗的触摸点击动作统一由 `main.c` 的 `execute_menu_action` / `execute_settings_action` 处理（BOOT 键确认 + 触摸点击共享同一逻辑）
+- 中文字体: 由 `tools/generate_font.py` 提取源码字符集后用 `npx lv_font_conv` 生成（`main/font/lv_font_sc_{12,14,20}.c`）。**新增中文字面量后必须重跑 `make font`**，否则新字显示为方块。

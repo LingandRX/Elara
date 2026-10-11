@@ -20,6 +20,9 @@ idf_component_register(
         "input/lvgl_touch.c"
         "buddy/buddy_state.c"
         "buddy/buddy_stats.c"
+        "font/lv_font_sc_12.c"
+        "font/lv_font_sc_14.c"
+        "font/lv_font_sc_20.c"
     INCLUDE_DIRS
         "."
         "display"
