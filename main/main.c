@@ -385,6 +385,7 @@ static void execute_settings_action(BuddySettingItem item) {
     case BUDDY_SET_ROTATE: {
         BuddySettings *set = buddy_settings_get();
         set->clock_rot = (set->clock_rot + 1) % 3;
+        buddy_ui_settings_set_rotate(set->clock_rot);
         buddy_settings_save();
         beep(1800, 30);
         break;
@@ -414,17 +415,9 @@ static void execute_settings_action(BuddySettingItem item) {
         break;
     }
     case BUDDY_SET_RESET: {
-        ui->settings_open = false;
-        buddy_ui_show_settings(false);
+        /* 弹出确认弹窗（见设计文档 §5.4） */
         ui->reset_open = true;
-        ui->reset_sel = 0;
-        ui->reset_confirm_idx = 0xFF;
-        break;
-    }
-    case BUDDY_SET_BACK: {
-        ui->settings_open = false;
-        buddy_ui_show_settings(false);
-        buddy_anim_invalidate();
+        buddy_ui_show_reset_confirm(true);
         break;
     }
     default:
@@ -433,6 +426,13 @@ static void execute_settings_action(BuddySettingItem item) {
 }
 
 /* 触摸点击设置项回调（运行于 LVGL 锁内） */
+/* 恢复出厂确认（用户在弹窗点「确认」时执行） */
+static void on_reset_confirm(void) {
+    ESP_LOGW(TAG, "Factory reset confirmed");
+    buddy_stats_factory_reset();
+    esp_restart();
+}
+
 static void on_settings_action(BuddySettingItem item) {
     BuddyUIState *ui = buddy_get_ui_state();
     /* 同步选中状态，保持与物理按键导航一致 */
@@ -483,13 +483,15 @@ static void process_boot_key(void) {
             beep(800, 60);
             if (ui->reset_open) {
                 /* 长按确认：执行恢复出厂并重启 */
-                ESP_LOGW(TAG, "Factory reset confirmed");
                 ui->reset_open = false;
-                buddy_stats_factory_reset();
-                esp_restart();
+                buddy_ui_show_reset_confirm(false);
+                on_reset_confirm();
             } else if (ui->settings_open) {
+                /* 长按 = 返回上一层（见设计文档 §4.2） */
                 if (lv_port_disp_lock(-1)) {
-                    execute_settings_action((BuddySettingItem)ui->settings_sel);
+                    ui->settings_open = false;
+                    buddy_ui_show_settings(false);
+                    buddy_anim_invalidate();
                     lv_port_disp_unlock();
                 }
             } else if (ui->menu_open) {
@@ -528,6 +530,7 @@ static void process_boot_key(void) {
             }
             if (ui->reset_open) {
                 ui->reset_open = false;   /* 短按取消恢复出厂 */
+                buddy_ui_show_reset_confirm(false);
             } else if (ui->settings_open) {
                 if (lv_port_disp_lock(-1)) {
                     ui->settings_sel = (ui->settings_sel + 1) % BUDDY_SET_MAX;
@@ -590,6 +593,7 @@ void app_main(void) {
     buddy_ui_set_overlay_close_cb(on_menu_closed, on_settings_closed);
     buddy_ui_set_menu_action_cb(on_menu_action);
     buddy_ui_set_settings_action_cb(on_settings_action);
+    buddy_ui_set_reset_confirm_cb(on_reset_confirm);
     buddy_ui_show(true);
 
     /* 4. 初始化存储 */
@@ -627,7 +631,7 @@ void app_main(void) {
     /* 8. 应用设置（同步到 UI 显示，与 NVS 配置保持一致） */
     BuddySettings *set = buddy_settings_get();
     buddy_ui_settings_set_toggle(BUDDY_SET_INFO_PANEL, set->hud);
-    buddy_ui_settings_set_toggle(BUDDY_SET_ROTATE, set->clock_rot);
+    buddy_ui_settings_set_rotate(set->clock_rot);
     buddy_ui_settings_set_toggle(BUDDY_SET_WIFI, set->wifi);
     buddy_ui_settings_set_toggle(BUDDY_SET_SOUND, set->sound);
     buddy_ui_settings_set_toggle(BUDDY_SET_AUTO_SLEEP, set->auto_sleep);

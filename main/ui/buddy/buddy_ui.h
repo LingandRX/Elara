@@ -46,7 +46,6 @@ typedef enum {
     BUDDY_SET_SOUND,
     BUDDY_SET_AUTO_SLEEP,
     BUDDY_SET_RESET,
-    BUDDY_SET_BACK,
     BUDDY_SET_MAX
 } BuddySettingItem;
 
@@ -58,6 +57,9 @@ typedef void (*BuddyMenuActionCb)(BuddyMenuItem item);
 
 /* 设置项点击动作回调（触摸点击设置项时触发，用于执行对应动作） */
 typedef void (*BuddySettingActionCb)(BuddySettingItem item);
+
+/* 恢复出厂确认回调（用户点「确认」时触发） */
+typedef void (*BuddyResetConfirmCb)(void);
 
 /**
  * 注册覆盖层点击外部时的关闭回调
@@ -77,6 +79,12 @@ void buddy_ui_set_menu_action_cb(BuddyMenuActionCb cb);
  * 触摸点击设置项时触发，用于执行对应动作
  */
 void buddy_ui_set_settings_action_cb(BuddySettingActionCb cb);
+
+/**
+ * 注册恢复出厂确认回调
+ * 用户点「确认」时触发，由 main.c 执行实际擦除与重启
+ */
+void buddy_ui_set_reset_confirm_cb(BuddyResetConfirmCb cb);
 
 /* ============ 初始化与显示 ============ */
 
@@ -171,6 +179,19 @@ void buddy_ui_menu_select(BuddyMenuItem item);
  */
 BuddyMenuItem buddy_ui_get_menu_selected(void);
 
+/* ============ 恢复出厂确认弹窗 ============ */
+
+/**
+ * 显示/隐藏「恢复出厂」确认弹窗
+ * @param show 是否显示
+ */
+void buddy_ui_show_reset_confirm(bool show);
+
+/**
+ * 查询确认弹窗是否可见
+ */
+bool buddy_ui_is_reset_confirm_visible(void);
+
 /* ============ 设置 ============ */
 
 /**
@@ -203,6 +224,12 @@ void buddy_ui_settings_set_toggle(BuddySettingItem item, bool on);
  * @param pct 亮度百分比 (0-100)
  */
 void buddy_ui_settings_set_brightness(int pct);
+
+/**
+ * 更新「旋转」设置显示（0/90/180 度）
+ * @param rot 0=0°, 1=90°, 2=180°
+ */
+void buddy_ui_settings_set_rotate(uint8_t rot);
 
 /* ============ 时钟 ============ */
 
