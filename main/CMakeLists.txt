@@ -11,6 +11,7 @@ idf_component_register(
         "ui/wifi_ui.c"
         "ui/sprite_pet.c"
         "ui/buddy/buddy_ui.c"
+        "ui/buddy/buddy_strings.c"
         "ui/buddy/buddy_anim.c"
         "comm/uart_comm.c"
         "comm/tcp_server.c"

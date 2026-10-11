@@ -4,6 +4,8 @@
  * Buddy 主界面实现
  */
 
+#include "buddy_theme.h"
+#include "buddy_strings.h"
 #include "buddy_ui.h"
 #include "buddy_anim.h"
 #include "sprite_pet.h"
@@ -17,25 +19,10 @@
 
 static const char *TAG = "BUDDY_UI";
 
-/* ============ 颜色定义 (方案B: 薄荷青 Aqua) ============ */
-#define COLOR_BG       lv_color_hex(0x08141E)  /* 深蓝黑背景 */
-#define COLOR_PANEL    lv_color_hex(0x0F2A38)
-#define COLOR_HOT      lv_color_hex(0x00D4C8)
-#define COLOR_GREEN    lv_color_hex(0x00FF00)  /* 纯绿（0x07E0 是 RGB565 值，lv_color_hex 需 0xRRGGBB） */
-#define COLOR_RED      lv_color_hex(0xFF0000)  /* 纯红（0xF800 同理） */
-#define COLOR_TEXT     lv_color_hex(0xFFFFFF)
-#define COLOR_TEXT_DIM lv_color_hex(0x6E92A8)
-
-/* ============ 屏幕尺寸 ============ */
-#define SCREEN_W 170
-#define SCREEN_H 320
-
 /* ============ 布局常量 ============ */
 #define ANIM_AREA_H     170     /* 角色动画区域高度 */
 #define STATUS_AREA_H   150     /* 状态区域高度 */
 #define STATUS_AREA_Y   170     /* 状态区域 Y 偏移 */
-#define BAR_H           8       /* 进度条高度 */
-#define ROW_H           28      /* 列表行高 */
 #define PAD             4       /* 通用内边距 */
 
 /* ============ 静态 UI 元素 ============ */
@@ -258,7 +245,7 @@ static void create_pet_page(void) {
     /* 标题 */
     lv_obj_t *title = lv_label_create(s_pet_page);
     lv_label_set_text(title, LV_SYMBOL_CHARGE " PET");
-    lv_obj_set_style_text_color(title, COLOR_HOT, 0);
+    lv_obj_set_style_text_color(title, COLOR_ACCENT, 0);
     lv_obj_set_style_text_font(title, LV_FONT_DEFAULT, 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
 
@@ -545,7 +532,7 @@ static void menu_event_cb(lv_event_t *e) {
             ESP_LOGI(TAG, "Menu clicked: %d", i);
             /* 高亮选中项 */
             for (int j = 0; j < BUDDY_MENU_MAX; j++) {
-                lv_obj_set_style_bg_color(s_menu_items[j], (j == i) ? COLOR_HOT : COLOR_PANEL, 0);
+                lv_obj_set_style_bg_color(s_menu_items[j], (j == i) ? COLOR_ACCENT : COLOR_PANEL, 0);
             }
             /* 触发菜单动作（进入对应子菜单） */
             if (s_menu_action_cb) {
@@ -584,7 +571,7 @@ static void create_menu_overlay(void) {
     /* 菜单标题 */
     lv_obj_t *mt = lv_label_create(s_menu_panel);
     lv_label_set_text(mt, LV_SYMBOL_LIST " Menu");
-    lv_obj_set_style_text_color(mt, COLOR_HOT, 0);
+    lv_obj_set_style_text_color(mt, COLOR_ACCENT, 0);
     lv_obj_align(mt, LV_ALIGN_TOP_MID, 0, 2);
 
     /* 菜单项 */
@@ -592,7 +579,7 @@ static void create_menu_overlay(void) {
     for (int i = 0; i < BUDDY_MENU_MAX; i++) {
         s_menu_items[i] = lv_obj_create(s_menu_panel);
         lv_obj_set_size(s_menu_items[i], 128, 22);
-        lv_obj_set_style_bg_color(s_menu_items[i], (i == 0) ? COLOR_HOT : COLOR_PANEL, 0);
+        lv_obj_set_style_bg_color(s_menu_items[i], (i == 0) ? COLOR_ACCENT : COLOR_PANEL, 0);
         lv_obj_set_style_border_width(s_menu_items[i], 0, 0);
         lv_obj_set_style_radius(s_menu_items[i], 4, 0);
         obj_set_pad_all(s_menu_items[i], 2);
@@ -621,7 +608,7 @@ static void settings_event_cb(lv_event_t *e) {
         if (s_setting_items[i] == target) {
             ESP_LOGI(TAG, "Settings clicked: %d", i);
             for (int j = 0; j < BUDDY_SET_MAX; j++) {
-                lv_obj_set_style_bg_color(s_setting_items[j], (j == i) ? COLOR_HOT : COLOR_PANEL, 0);
+                lv_obj_set_style_bg_color(s_setting_items[j], (j == i) ? COLOR_ACCENT : COLOR_PANEL, 0);
             }
             /* 触发设置动作（执行对应功能） */
             if (s_settings_action_cb) {
@@ -659,14 +646,14 @@ static void create_settings_overlay(void) {
     /* 设置标题 */
     lv_obj_t *st = lv_label_create(s_settings_panel);
     lv_label_set_text(st, LV_SYMBOL_SETTINGS " Settings");
-    lv_obj_set_style_text_color(st, COLOR_HOT, 0);
+    lv_obj_set_style_text_color(st, COLOR_ACCENT, 0);
     lv_obj_align(st, LV_ALIGN_TOP_MID, 0, 2);
 
     int y = 24;
     for (int i = 0; i < BUDDY_SET_MAX; i++) {
         s_setting_items[i] = lv_obj_create(s_settings_panel);
         lv_obj_set_size(s_setting_items[i], 142, 22);
-        lv_obj_set_style_bg_color(s_setting_items[i], (i == 0) ? COLOR_HOT : COLOR_PANEL, 0);
+        lv_obj_set_style_bg_color(s_setting_items[i], (i == 0) ? COLOR_ACCENT : COLOR_PANEL, 0);
         lv_obj_set_style_border_width(s_setting_items[i], 0, 0);
         lv_obj_set_style_radius(s_setting_items[i], 4, 0);
         obj_set_pad_all(s_setting_items[i], 2);
@@ -838,7 +825,7 @@ void buddy_ui_show_menu(bool show) {
         /* 重置选中 */
         s_menu_selected = 0;
         for (int i = 0; i < BUDDY_MENU_MAX; i++) {
-            lv_obj_set_style_bg_color(s_menu_items[i], (i == 0) ? COLOR_HOT : COLOR_PANEL, 0);
+            lv_obj_set_style_bg_color(s_menu_items[i], (i == 0) ? COLOR_ACCENT : COLOR_PANEL, 0);
         }
     }
 }
@@ -851,7 +838,7 @@ void buddy_ui_menu_select(BuddyMenuItem item) {
     if (item < 0 || item >= BUDDY_MENU_MAX) return;
     s_menu_selected = item;
     for (int i = 0; i < BUDDY_MENU_MAX; i++) {
-        lv_obj_set_style_bg_color(s_menu_items[i], (i == item) ? COLOR_HOT : COLOR_PANEL, 0);
+        lv_obj_set_style_bg_color(s_menu_items[i], (i == item) ? COLOR_ACCENT : COLOR_PANEL, 0);
     }
 }
 
@@ -867,7 +854,7 @@ void buddy_ui_show_settings(bool show) {
     if (show) {
         lv_obj_move_foreground(s_settings_overlay);
         for (int i = 0; i < BUDDY_SET_MAX; i++) {
-            lv_obj_set_style_bg_color(s_setting_items[i], (i == 0) ? COLOR_HOT : COLOR_PANEL, 0);
+            lv_obj_set_style_bg_color(s_setting_items[i], (i == 0) ? COLOR_ACCENT : COLOR_PANEL, 0);
         }
     }
 }
@@ -879,7 +866,7 @@ bool buddy_ui_is_settings_visible(void) {
 void buddy_ui_settings_select(BuddySettingItem item) {
     if (item < 0 || item >= BUDDY_SET_MAX) return;
     for (int i = 0; i < BUDDY_SET_MAX; i++) {
-        lv_obj_set_style_bg_color(s_setting_items[i], (i == item) ? COLOR_HOT : COLOR_PANEL, 0);
+        lv_obj_set_style_bg_color(s_setting_items[i], (i == item) ? COLOR_ACCENT : COLOR_PANEL, 0);
     }
 }
 
@@ -914,7 +901,7 @@ void buddy_ui_settings_set_toggle(BuddySettingItem item, bool on) {
 void buddy_ui_settings_set_species(const char *name) {
     if (s_setting_vals[BUDDY_SET_ASCII] && name) {
         lv_label_set_text(s_setting_vals[BUDDY_SET_ASCII], name);
-        lv_obj_set_style_text_color(s_setting_vals[BUDDY_SET_ASCII], COLOR_HOT, 0);
+        lv_obj_set_style_text_color(s_setting_vals[BUDDY_SET_ASCII], COLOR_ACCENT, 0);
     }
 }
 
@@ -977,7 +964,7 @@ void buddy_ui_set_wifi(bool enabled, int signal_level) {
     /* 按信号等级着色：强=绿, 中=薄荷青, 弱=红, 未连接/极弱=暗色 */
     lv_color_t color = COLOR_TEXT_DIM;
     if (signal_level >= 3)      color = COLOR_GREEN;
-    else if (signal_level == 2) color = COLOR_HOT;
+    else if (signal_level == 2) color = COLOR_ACCENT;
     else if (signal_level == 1) color = COLOR_RED;
     lv_obj_set_style_text_color(s_wifi_label, color, 0);
 
