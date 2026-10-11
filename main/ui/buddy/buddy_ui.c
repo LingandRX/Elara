@@ -11,6 +11,7 @@
 #include "buddy_drawer.h"
 #include "sprite_pet.h"
 #include "pet_ui.h"
+#include "wifi_ui.h"
 #include "buddy/buddy_state.h"
 #include "esp_log.h"
 #include "esp_system.h"
@@ -508,6 +509,14 @@ void buddy_ui_handle_swipe(lv_dir_t dir) {
         if (dir == LV_DIR_LEFT)  pet_ui_next_state();
         if (dir == LV_DIR_RIGHT) pet_ui_prev_state();
         return;
+    }
+    /* WiFi 页面：其列表自身纵向滚动，忽略全局手势 */
+    if (wifi_ui_is_visible()) return;
+    /* 菜单/设置覆盖层打开时：忽略手势，避免叠加抽屉 */
+    if (buddy_ui_is_menu_visible()) return;
+    {
+        BuddyUIState *ui = buddy_get_ui_state();
+        if (ui->settings_open || ui->reset_open) return;
     }
     /* 抽屉打开时：上下滑动关闭 */
     if (buddy_drawer_is_open()) {

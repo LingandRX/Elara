@@ -555,6 +555,10 @@ static void process_boot_key(void) {
             }
         } else {
             if (buddy_drawer_is_open()) {
+                if (lv_port_disp_lock(-1)) {
+                    buddy_drawer_close();
+                    lv_port_disp_unlock();
+                }
                 return;
             }
             /* 短按 */
