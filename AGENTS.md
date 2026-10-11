@@ -145,6 +145,9 @@ idf.py -p /dev/ttyACM0 flash monitor
 - LCD 使用 ESP-IDF 官方 esp_lcd_panel_st7789 驱动，通过 esp_lcd API 操作
 - UART/TCP 协议：`petdex`/`upload`/`wifi` 明文命令仍有效；遗留 `status`/`chat`/`progress` **不再入命令队列**（Buddy JSON 由 `buddy_feed_usb_line` 处理）
 - LVGL 版本: 8.4，通过 ESP-IDF 组件管理器集成
+- LVGL 配置真相源是 `sdkconfig`（Kconfig），`components/lv_conf.h` **不参与编译**
+  （`CONFIG_LV_CONF_SKIP=y`，且 LVGL 组件看不到该路径）。界面默认字体用
+  `buddy_theme.h` 的 `BUDDY_FONT_DEFAULT`，不要用 LVGL 的 `LV_FONT_DEFAULT`（那是不含中文的 Montserrat）。
 - LVGL 显示缓冲: 双缓冲模式，每缓冲 160 行（LVGL_BUF_LINES=160），DMA 内存分配
 - LVGL tick: 2ms 周期（esp_timer 实现，比 FreeRTOS 任务更精确）
 - LCD 颜色配置排查: LVGL 输出 RGB565，`LV_COLOR_16_SWAP` 只处理 16 位像素字节序；`rgb_ele_order` 处理 R/B 通道顺序；`esp_lcd_panel_invert_color()` 处理面板反相。若 RED 显示为黄色，通常是 `rgb_ele_order` 配成 BGR 后红色先被解释为蓝色，再被反相成黄色；本板实测 RED 正确显示需要使用 `LCD_RGB_ELEMENT_ORDER_RGB` + `data_endian = LCD_RGB_DATA_ENDIAN_BIG`，并根据屏幕极性确认 `invert_color` 状态。

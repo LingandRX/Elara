@@ -5,6 +5,7 @@
  */
 
 #include "buddy_anim.h"
+#include "buddy_theme.h"
 #include <string.h>
 
 #define BUDDY_COUNT 18
@@ -70,7 +71,7 @@ static void buddy_draw_ascii(lv_obj_t *canvas, lv_coord_t cx, lv_coord_t cy,
     lv_obj_t *label = buddy_ensure_label(canvas);
     lv_label_set_text(label, text);
     lv_obj_set_style_text_color(label, color, 0);
-    lv_obj_set_style_text_font(label, LV_FONT_DEFAULT, 0);
+    lv_obj_set_style_text_font(label, FONT_MD, 0);
 
     lv_coord_t off_y = buddy_anim_offset(tick, state);
     /* cx/cy 是角色中心在画布内的目标坐标；LV_ALIGN_CENTER 的偏移相对父容器中心，需换算 */

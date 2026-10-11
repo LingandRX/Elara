@@ -31,6 +31,10 @@ extern const lv_font_t lv_font_sc_20;
 #define FONT_MD         (&lv_font_sc_14)
 #define FONT_LG         (&lv_font_sc_20)
 
+/* 应用层默认字体：Kconfig 的 LVGL 默认字体是 choice，无法指向自定义字体，
+ * 故本工程统一以 FONT_MD 作为界面默认字体（见 docs/2026-10-11-ui-redesign-design.md §7）。 */
+#define BUDDY_FONT_DEFAULT  FONT_MD
+
 /* 屏幕与布局 */
 #define SCREEN_W        170
 #define SCREEN_H        320

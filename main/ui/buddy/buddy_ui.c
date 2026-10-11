@@ -191,21 +191,21 @@ static void create_normal_page(void) {
     s_clock_label = lv_label_create(s_normal_page);
     lv_label_set_text(s_clock_label, "12:00");
     lv_obj_set_style_text_color(s_clock_label, COLOR_TEXT, 0);
-    lv_obj_set_style_text_font(s_clock_label, LV_FONT_DEFAULT, 0);
+    lv_obj_set_style_text_font(s_clock_label, BUDDY_FONT_DEFAULT, 0);
     lv_obj_align(s_clock_label, LV_ALIGN_TOP_LEFT, 4, 4);
 
     /* 电池标签（右上角） */
     s_battery_label = lv_label_create(s_normal_page);
     lv_label_set_text(s_battery_label, LV_SYMBOL_CHARGE " 100%");
     lv_obj_set_style_text_color(s_battery_label, COLOR_TEXT, 0);
-    lv_obj_set_style_text_font(s_battery_label, LV_FONT_DEFAULT, 0);
+    lv_obj_set_style_text_font(s_battery_label, BUDDY_FONT_DEFAULT, 0);
     lv_obj_align(s_battery_label, LV_ALIGN_TOP_RIGHT, -4, 4);
 
     /* WiFi 连接标识（header 顶部，电池左侧） */
     s_wifi_label = lv_label_create(s_normal_page);
     lv_label_set_text(s_wifi_label, LV_SYMBOL_WIFI);
     lv_obj_set_style_text_color(s_wifi_label, COLOR_TEXT_DIM, 0);
-    lv_obj_set_style_text_font(s_wifi_label, LV_FONT_DEFAULT, 0);
+    lv_obj_set_style_text_font(s_wifi_label, BUDDY_FONT_DEFAULT, 0);
     lv_obj_align(s_wifi_label, LV_ALIGN_TOP_RIGHT, -54, 4);
 
     /* 状态栏分隔线 */
@@ -260,7 +260,7 @@ static void create_pet_page(void) {
     lv_obj_t *title = lv_label_create(s_pet_page);
     lv_label_set_text(title, LV_SYMBOL_CHARGE " PET");
     lv_obj_set_style_text_color(title, COLOR_ACCENT, 0);
-    lv_obj_set_style_text_font(title, LV_FONT_DEFAULT, 0);
+    lv_obj_set_style_text_font(title, BUDDY_FONT_DEFAULT, 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
 
     /* ASCII Pet 预览区 */
@@ -317,7 +317,7 @@ static void create_info_page(void) {
     /* 内容区域 (禁止滚动, 避免拖动时被当作滚动) */
     s_info_content = lv_label_create(s_info_page);
     lv_obj_set_style_text_color(s_info_content, COLOR_TEXT, 0);
-    lv_obj_set_style_text_font(s_info_content, LV_FONT_DEFAULT, 0);
+    lv_obj_set_style_text_font(s_info_content, BUDDY_FONT_DEFAULT, 0);
     lv_label_set_long_mode(s_info_content, LV_LABEL_LONG_WRAP);
     lv_obj_set_size(s_info_content, SCREEN_W - 12, SCREEN_H - 56);
     lv_obj_align(s_info_content, LV_ALIGN_TOP_LEFT, 6, 38);
@@ -605,7 +605,7 @@ static void create_menu_overlay(void) {
         s_menu_labels[i] = lv_label_create(s_menu_items[i]);
         lv_label_set_text(s_menu_labels[i], s_menu_texts[i]);
         lv_obj_set_style_text_color(s_menu_labels[i], COLOR_TEXT, 0);
-        lv_obj_set_style_text_font(s_menu_labels[i], LV_FONT_DEFAULT, 0);
+        lv_obj_set_style_text_font(s_menu_labels[i], BUDDY_FONT_DEFAULT, 0);
         lv_obj_align(s_menu_labels[i], LV_ALIGN_LEFT_MID, 4, 0);
 
         y += 24;
@@ -679,12 +679,12 @@ static void create_settings_overlay(void) {
         s_setting_labels[i] = lv_label_create(s_setting_items[i]);
         lv_label_set_text(s_setting_labels[i], s_setting_texts[i]);
         lv_obj_set_style_text_color(s_setting_labels[i], COLOR_TEXT, 0);
-        lv_obj_set_style_text_font(s_setting_labels[i], LV_FONT_DEFAULT, 0);
+        lv_obj_set_style_text_font(s_setting_labels[i], BUDDY_FONT_DEFAULT, 0);
         lv_obj_align(s_setting_labels[i], LV_ALIGN_LEFT_MID, 4, 0);
 
         s_setting_vals[i] = lv_label_create(s_setting_items[i]);
         lv_obj_set_style_text_color(s_setting_vals[i], COLOR_TEXT_DIM, 0);
-        lv_obj_set_style_text_font(s_setting_vals[i], LV_FONT_DEFAULT, 0);
+        lv_obj_set_style_text_font(s_setting_vals[i], BUDDY_FONT_DEFAULT, 0);
         lv_obj_align(s_setting_vals[i], LV_ALIGN_RIGHT_MID, -4, 0);
 
         y += 24;
