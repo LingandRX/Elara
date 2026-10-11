@@ -50,6 +50,7 @@ def build_font(size: int, charset: str, out_dir: Path) -> Path:
         "--format", "lvgl",
         "--lv-include", "lvgl.h",
         "--lv-font-name", f"lv_font_sc_{size}",
+        "--lv-fallback", "lv_font_montserrat_14",
         "--font", MONO_FONT, "--range", "0x20-0x7E",
         "--font", CJK_FONT, "--symbols", cjk_charset,
         "-o", str(out),

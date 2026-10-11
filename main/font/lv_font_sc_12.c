@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Size: 12 px
  * Bpp: 1
- * Opts: --size 12 --bpp 1 --no-compress --no-kerning --format lvgl --lv-include lvgl.h --lv-font-name lv_font_sc_12 --font /System/Library/Fonts/Monaco.ttf --range 0x20-0x7E --font /System/Library/Fonts/Supplemental/Arial Unicode.ttf --symbols ·…▼一三上下不个中了二于五亮件休伴位作侣保信储充六关出击分到加动单厂号同后启周喂四回固图在声复失存完定宠密导小少屏工已帧幕度开式待循心忙态恢息成或扫找按接描摸放断旋日时明显晕月未本机板桌检模次步死测滑演点片版物状狗环电看眠睡知短码确示稳络网置联自至航芯菜行要触认设证试该误说请败超转运返连重量鉴错键长门闭间需面音页食饥饿！，： -o /Users/yulinling/.codex/worktrees/ui-redesign/Elara/main/font/lv_font_sc_12.c
+ * Opts: --size 12 --bpp 1 --no-compress --no-kerning --format lvgl --lv-include lvgl.h --lv-font-name lv_font_sc_12 --lv-fallback lv_font_montserrat_14 --font /System/Library/Fonts/Monaco.ttf --range 0x20-0x7E --font /System/Library/Fonts/Supplemental/Arial Unicode.ttf --symbols ·…▼一三上下不个中了二于五亮件休伴位作侣保信储充六关出击分到加动单厂号同后启周喂四回固图在声复失存完定宠密导小少屏工已帧幕度开式待循心忙态恢息成或扫找按接描摸放断旋日时明显晕月未本机板桌检模次步死测滑演点片版物状狗环电看眠睡知短码确示稳络网置联自至航芯菜行要触认设证试该误说请败超转运返连重量鉴错键长门闭间需面音页食饥饿！，： -o /Users/yulinling/.codex/worktrees/ui-redesign/Elara/main/font/lv_font_sc_12.c
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE
@@ -1309,6 +1309,7 @@ static lv_font_fmt_txt_dsc_t font_dsc = {
 #endif
 };
 
+extern const lv_font_t lv_font_montserrat_14;
 
 
 /*-----------------
@@ -1334,7 +1335,7 @@ lv_font_t lv_font_sc_12 = {
 #endif
     .dsc = &font_dsc,          /*The custom font data. Will be accessed by `get_glyph_bitmap/dsc` */
 #if LV_VERSION_CHECK(8, 2, 0) || LVGL_VERSION_MAJOR >= 9
-    .fallback = NULL,
+    .fallback = &lv_font_montserrat_14,
 #endif
     .user_data = NULL,
 };

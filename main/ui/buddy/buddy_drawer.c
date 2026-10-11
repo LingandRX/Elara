@@ -137,6 +137,7 @@ void buddy_drawer_refresh(void) {
 }
 
 void buddy_drawer_open(void) {
+    if (!s_scrim) return;
     if (s_open) { buddy_drawer_refresh(); return; }
     s_open = true;
     lv_obj_clear_flag(s_scrim, LV_OBJ_FLAG_HIDDEN);
@@ -157,7 +158,7 @@ void buddy_drawer_close(void) {
     if (!s_open) return;
     s_open = false;
     lv_anim_del(s_panel, panel_anim_cb);          /* 停止未完成的滑入动画 */
-    lv_obj_set_y(s_panel, 0);                      /* 复位到完全展开位置 */
+    lv_obj_align(s_panel, LV_ALIGN_BOTTOM_MID, 0, 0);  /* 复位到底部停靠位（与打开动画终点一致） */
     lv_obj_add_flag(s_scrim, LV_OBJ_FLAG_HIDDEN);
 }
 

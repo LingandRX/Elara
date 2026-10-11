@@ -135,7 +135,10 @@ static void update_clock(void) {
     }
     int h = 0, m = 0, s = 0;
     if (buddy_get_local_time(&h, &m, &s, NULL, NULL, NULL, NULL)) {
-        buddy_ui_set_clock(h, m, s);
+        if (lv_port_disp_lock(50)) {
+            buddy_ui_set_clock(h, m, s);
+            lv_port_disp_unlock();
+        }
     }
 }
 
@@ -514,7 +517,11 @@ static void process_boot_key(void) {
             /* 长按 */
             beep(800, 60);
             if (ui->reset_open) {
+                /* 长按确认：执行恢复出厂并重启 */
+                ESP_LOGW(TAG, "Factory reset confirmed");
                 ui->reset_open = false;
+                buddy_stats_factory_reset();
+                esp_restart();
             } else if (ui->settings_open) {
                 if (lv_port_disp_lock(-1)) {
                     execute_settings_action((BuddySettingItem)ui->settings_sel);
@@ -545,9 +552,17 @@ static void process_boot_key(void) {
             }
             /* 短按 */
             beep(1800, 30);
+            if (ui->display_mode == DISP_INFO) {
+                if (lv_port_disp_lock(-1)) {
+                    ui->display_mode = DISP_NORMAL;
+                    buddy_ui_set_mode(BUDDY_MODE_NORMAL);
+                    buddy_anim_invalidate();
+                    lv_port_disp_unlock();
+                }
+                return;
+            }
             if (ui->reset_open) {
-                ui->reset_sel = (ui->reset_sel + 1) % 3;
-                ui->reset_confirm_idx = 0xFF;
+                ui->reset_open = false;   /* 短按取消恢复出厂 */
             } else if (ui->settings_open) {
                 if (lv_port_disp_lock(-1)) {
                     ui->settings_sel = (ui->settings_sel + 1) % BUDDY_SET_MAX;
