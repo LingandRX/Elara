@@ -7,6 +7,11 @@
 
 #include "lvgl.h"
 
+/* 生成字体的外部声明（同 lv_conf.h 中的约定） */
+extern const lv_font_t lv_font_sc_12;
+extern const lv_font_t lv_font_sc_14;
+extern const lv_font_t lv_font_sc_20;
+
 /* 配色 (Warm) */
 #define COLOR_BG        lv_color_hex(0x16110D)  /* 暖黑底 */
 #define COLOR_PANEL     lv_color_hex(0x2A211A)  /* 卡片 */

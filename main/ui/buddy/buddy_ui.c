@@ -37,9 +37,9 @@ static bool s_pet_animated = false;      /* true=动画 pet, false=ASCII pet */
 static lv_obj_t *s_clock_label = NULL;
 static lv_obj_t *s_wifi_label = NULL;
 static int s_last_wifi_level = -1;   /* 诊断：上次设置的信号等级 */
-static lv_obj_t *s_hud_panel = NULL;
-static lv_obj_t *s_hud_label = NULL;
 static lv_obj_t *s_battery_label = NULL;
+static lv_obj_t *s_persona_label = NULL;
+static lv_obj_t *s_mood_dots[3] = {NULL, NULL, NULL};
 
 /* PET 模式 */
 static lv_obj_t *s_pet_page = NULL;
@@ -208,25 +208,39 @@ static void create_normal_page(void) {
     lv_obj_set_style_text_font(s_wifi_label, LV_FONT_DEFAULT, 0);
     lv_obj_align(s_wifi_label, LV_ALIGN_TOP_RIGHT, -54, 4);
 
-    /* HUD 面板 */
-    s_hud_panel = lv_obj_create(s_normal_page);
-    lv_obj_set_size(s_hud_panel, SCREEN_W - 8, 60);
-    lv_obj_set_style_bg_color(s_hud_panel, COLOR_PANEL, 0);
-    lv_obj_set_style_border_width(s_hud_panel, 1, 0);
-    lv_obj_set_style_border_color(s_hud_panel, COLOR_TEXT_DIM, 0);
-    lv_obj_set_style_radius(s_hud_panel, 6, 0);
-    obj_set_pad_all(s_hud_panel, 4);
-    lv_obj_align(s_hud_panel, LV_ALIGN_TOP_MID, 0, STATUS_AREA_Y + 10);
-    lv_obj_clear_flag(s_hud_panel, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(s_hud_panel, LV_OBJ_FLAG_HIDDEN);
+    /* 状态栏分隔线 */
+    lv_obj_t *sep = lv_obj_create(s_normal_page);
+    lv_obj_set_size(sep, SCREEN_W - 12, 1);
+    lv_obj_set_style_bg_color(sep, COLOR_LINE, 0);
+    lv_obj_set_style_border_width(sep, 0, 0);
+    lv_obj_set_style_radius(sep, 0, 0);
+    lv_obj_clear_flag(sep, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(sep, LV_ALIGN_TOP_MID, 0, STATUS_BAR_H - 1);
 
-    s_hud_label = lv_label_create(s_hud_panel);
-    lv_label_set_text(s_hud_label, "HUD Ready");
-    lv_obj_set_style_text_color(s_hud_label, COLOR_TEXT, 0);
-    lv_obj_set_style_text_font(s_hud_label, LV_FONT_DEFAULT, 0);
-    lv_label_set_long_mode(s_hud_label, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(s_hud_label, SCREEN_W - 20);
-    lv_obj_align(s_hud_label, LV_ALIGN_TOP_LEFT, 0, 0);
+    /* 状态词 */
+    s_persona_label = lv_label_create(s_normal_page);
+    lv_label_set_text(s_persona_label, "待机");
+    lv_obj_set_style_text_color(s_persona_label, COLOR_TEXT_DIM, 0);
+    lv_obj_set_style_text_font(s_persona_label, FONT_MD, 0);
+    lv_obj_align(s_persona_label, LV_ALIGN_TOP_MID, 0, 202);
+
+    /* 心情指示点 */
+    for (int i = 0; i < 3; i++) {
+        s_mood_dots[i] = lv_obj_create(s_normal_page);
+        lv_obj_set_size(s_mood_dots[i], 5, 5);
+        lv_obj_set_style_radius(s_mood_dots[i], LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_color(s_mood_dots[i], COLOR_LINE, 0);
+        lv_obj_set_style_border_width(s_mood_dots[i], 0, 0);
+        lv_obj_clear_flag(s_mood_dots[i], LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_align(s_mood_dots[i], LV_ALIGN_TOP_MID, (i - 1) * 12, 276);
+    }
+
+    /* 手势提示 */
+    lv_obj_t *hint = lv_label_create(s_normal_page);
+    lv_label_set_text(hint, "上滑菜单  下滑信息");
+    lv_obj_set_style_text_color(hint, COLOR_TEXT_DIM, 0);
+    lv_obj_set_style_text_font(hint, FONT_SM, 0);
+    lv_obj_align(hint, LV_ALIGN_TOP_MID, 0, 292);
 }
 
 /* ============ PET 页面创建 ============ */
@@ -781,13 +795,16 @@ BuddyMode buddy_ui_get_mode(void) {
 
 /* ============ NORMAL 页面 ============ */
 
-void buddy_ui_set_hud_text(const char *text) {
-    if (!s_hud_label || !text) return;
-    lv_label_set_text(s_hud_label, text);
-}
-
-void buddy_ui_set_hud_visible(bool visible) {
-    obj_set_hidden(s_hud_panel, !visible);
+void buddy_ui_set_persona(uint8_t persona_state) {
+    if (s_persona_label) {
+        lv_label_set_text(s_persona_label, buddy_persona_label((PersonaState)persona_state));
+        lv_obj_set_style_text_color(s_persona_label,
+            persona_state == PERSONA_IDLE ? COLOR_TEXT_DIM : COLOR_TEXT, 0);
+    }
+    if (s_mood_dots[1]) {
+        bool active = persona_state != PERSONA_IDLE;
+        lv_obj_set_style_bg_color(s_mood_dots[1], active ? COLOR_ACCENT : COLOR_LINE, 0);
+    }
 }
 
 

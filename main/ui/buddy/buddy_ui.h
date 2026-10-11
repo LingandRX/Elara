@@ -134,16 +134,10 @@ BuddyMode buddy_ui_get_mode(void);
 /* ============ 主页 (NORMAL) ============ */
 
 /**
- * 设置 HUD 文本
- * @param text 文本内容
+ * 更新主界面 Persona 状态词与心情指示
+ * @param persona_state PersonaState 枚举值
  */
-void buddy_ui_set_hud_text(const char *text);
-
-/**
- * 显示/隐藏 HUD
- * @param visible 是否可见
- */
-void buddy_ui_set_hud_visible(bool visible);
+void buddy_ui_set_persona(uint8_t persona_state);
 
 /* ============ PET 页面 ============ */
 
