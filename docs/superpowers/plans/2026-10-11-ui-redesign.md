@@ -826,9 +826,15 @@ void buddy_ui_handle_swipe(lv_dir_t dir) {
         if (dir == LV_DIR_BOTTOM || dir == LV_DIR_TOP) buddy_drawer_close();
         return;
     }
-    /* 主界面：下滑出信息面板，上滑出菜单 */
-    if (dir == LV_DIR_BOTTOM) buddy_drawer_open(true);
-    else if (dir == LV_DIR_TOP) buddy_drawer_open(false);
+    /* 主界面：下滑出信息面板（抽屉），上滑出菜单（复用既有菜单覆盖层，见裁定 R6） */
+    if (dir == LV_DIR_BOTTOM) {
+        buddy_drawer_open();
+    } else if (dir == LV_DIR_TOP) {
+        BuddyUIState *ui = buddy_get_ui_state();
+        ui->menu_open = true;
+        ui->menu_sel = 0;
+        buddy_ui_show_menu(true);
+    }
 }
 ```
 
