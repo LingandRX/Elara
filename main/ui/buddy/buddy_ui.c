@@ -13,6 +13,7 @@
 #include "pet_ui.h"
 #include "wifi_ui.h"
 #include "buddy/buddy_state.h"
+#include "buddy/buddy_stats.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "input/lvgl_touch.h"
@@ -347,9 +348,9 @@ void buddy_ui_handle_swipe(lv_dir_t dir) {
         if (dir == LV_DIR_BOTTOM || dir == LV_DIR_TOP) buddy_drawer_close();
         return;
     }
-    /* 主界面：下滑出信息面板（抽屉），上滑出菜单（复用既有菜单覆盖层，见裁定 R6） */
+    /* 主界面：下滑出信息面板（抽屉，受设置开关控制），上滑出菜单（复用既有菜单覆盖层，见裁定 R6） */
     if (dir == LV_DIR_BOTTOM) {
-        buddy_drawer_open();
+        if (buddy_settings_get()->hud) buddy_drawer_open();
     } else if (dir == LV_DIR_TOP) {
         BuddyUIState *ui = buddy_get_ui_state();
         ui->menu_open = true;
