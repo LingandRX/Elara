@@ -1,6 +1,6 @@
 /**
  * @file main.c
- * Elara Buddy 入口点 - 从 claude-desktop-buddy 迁移
+ * Elara Buddy 入口点
  */
 
 #include <stdio.h>
@@ -185,7 +185,7 @@ static void process_boot_key(void);
 static void buddy_main_loop(void) {
     BuddyRuntime *rt = buddy_get_runtime();
     BuddyUIState *ui = buddy_get_ui_state();
-    ClaudeState *claude = buddy_get_claude_state();
+    SessionState *session = buddy_get_session_state();
 
     static bool was_clocking = false;
 
@@ -193,7 +193,7 @@ static void buddy_main_loop(void) {
     uint32_t now_ms = esp_timer_get_time() / 1000;
 
     /* 1. 轮询数据 */
-    buddy_data_poll(claude);
+    buddy_data_poll(session);
 
     /* 2. 检查升级 */
     if (buddy_stats_poll_level_up()) {
@@ -201,17 +201,17 @@ static void buddy_main_loop(void) {
     }
 
     /* 3. 推导基础状态 */
-    rt->base_state = buddy_derive_state(claude);
+    rt->base_state = buddy_derive_state(session);
 
     /* 3.5 done (会话完成) → 触发 CELEBRATE one-shot，与升级庆祝一致。
      * 否则 clocking 分支会立刻把 active_state 覆盖成时间节律的 sleep/idle，
      * celebrate 的 ascii pet 永远显示不出来（recently_completed 是基础状态，
      * 没有 oneshot 截止时间保护）。 */
     static bool was_completed = false;
-    if (claude->recently_completed && !was_completed) {
+    if (session->recently_completed && !was_completed) {
         buddy_trigger_oneshot(PERSONA_CELEBRATE, 4000);
     }
-    was_completed = claude->recently_completed;
+    was_completed = session->recently_completed;
 
     /* 4. 唤醒过渡保护 */
     if (rt->base_state == PERSONA_IDLE &&
@@ -225,11 +225,11 @@ static void buddy_main_loop(void) {
     }
 
     /* 6. 新审批提示到达 */
-    if (strcmp(claude->prompt_id, rt->last_prompt_id) != 0) {
-        strncpy(rt->last_prompt_id, claude->prompt_id, sizeof(rt->last_prompt_id) - 1);
+    if (strcmp(session->prompt_id, rt->last_prompt_id) != 0) {
+        strncpy(rt->last_prompt_id, session->prompt_id, sizeof(rt->last_prompt_id) - 1);
         rt->last_prompt_id[sizeof(rt->last_prompt_id) - 1] = '\0';
         rt->response_sent = false;
-        if (claude->prompt_id[0]) {
+        if (session->prompt_id[0]) {
             rt->prompt_arrived_ms = now_ms;
             wake();
             beep(1200, 80);
@@ -238,7 +238,7 @@ static void buddy_main_loop(void) {
             ui->settings_open = false;
             ui->reset_open = false;
             buddy_ui_hide_approval();
-            buddy_ui_show_approval(claude->prompt_tool, claude->prompt_hint);
+            buddy_ui_show_approval(session->prompt_tool, session->prompt_hint);
         } else if (!rt->response_sent) {
             /* 审批被撤销 */
             buddy_ui_hide_approval();
@@ -246,16 +246,16 @@ static void buddy_main_loop(void) {
     }
 
     /* 7. 处理审批计时 */
-    bool in_prompt = claude->prompt_id[0] && !rt->response_sent;
+    bool in_prompt = session->prompt_id[0] && !rt->response_sent;
     if (in_prompt && !buddy_ui_is_approval_visible()) {
         /* 确保审批界面显示 */
-        buddy_ui_show_approval(claude->prompt_tool, claude->prompt_hint);
+        buddy_ui_show_approval(session->prompt_tool, session->prompt_hint);
     }
 
-    /* 8. 推导 clocking 状态：仅在曾连接 opencode 但当前不在线时作为纯时钟；
-     *     在线时完全由 opencode 派生状态驱动（busy/done/idle/attention 均正常播放动画） */
+    /* 8. 推导 clocking 状态：仅在曾连接上位机但当前不在线时作为纯时钟；
+     *     在线时完全由会话派生状态驱动（busy/done/idle/attention 均正常播放动画） */
     bool clocking = buddy_rtc_valid() &&
-                    claude->connected &&          /* 曾与 opencode 配对 */
+                    session->connected &&         /* 曾与上位机配对 */
                     !buddy_data_connected();      /* 当前不在线（>30s 无数据）→ 纯时钟 */
 
     if (clocking != was_clocking) {
@@ -313,10 +313,10 @@ static void buddy_main_loop(void) {
 
             /* 更新 HUD（欢迎消息期间不覆盖） */
             if ((int32_t)(now_ms - s_welcome_until_ms) >= 0) {
-                if (claude->n_lines > 0) {
-                    buddy_ui_set_hud_text(claude->lines[claude->n_lines - 1]);
+                if (session->n_lines > 0) {
+                    buddy_ui_set_hud_text(session->lines[session->n_lines - 1]);
                 } else {
-                    buddy_ui_set_hud_text(claude->msg);
+                    buddy_ui_set_hud_text(session->msg);
                 }
             }
 
@@ -326,10 +326,10 @@ static void buddy_main_loop(void) {
                 buddy_ui_set_wifi(wset->wifi, wifi_manager_get_signal_level());
             }
 
-            /* 更新 PET 用量显示 (opencode Zen 套餐 rolling/weekly/monthly) */
-            int ur = (claude->usage_rolling == 0xFF) ? 0 : claude->usage_rolling;
-            int uw = (claude->usage_weekly == 0xFF) ? 0 : claude->usage_weekly;
-            int um = (claude->usage_monthly == 0xFF) ? 0 : claude->usage_monthly;
+            /* 更新 PET 用量显示 (套餐 rolling/weekly/monthly) */
+            int ur = (session->usage_rolling == 0xFF) ? 0 : session->usage_rolling;
+            int uw = (session->usage_weekly == 0xFF) ? 0 : session->usage_weekly;
+            int um = (session->usage_monthly == 0xFF) ? 0 : session->usage_monthly;
             buddy_ui_set_usage(ur, uw, um);
 
             lv_port_disp_unlock();
@@ -556,7 +556,7 @@ static void execute_approval_action(bool approve) {
     char cmd[96];
     snprintf(cmd, sizeof(cmd),
              "{\"cmd\":\"permission\",\"id\":\"%s\",\"decision\":\"%s\"}",
-             buddy_get_claude_state()->prompt_id, approve ? "once" : "deny");
+             buddy_get_session_state()->prompt_id, approve ? "once" : "deny");
     send_cmd(cmd);
     rt->response_sent = true;
     if (approve) {

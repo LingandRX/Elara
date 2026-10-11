@@ -1,7 +1,7 @@
 /**
  * @file buddy_state.h
- * Buddy 核心状态机 - 从 claude-desktop-buddy 迁移
- * 管理 7 种 Persona 状态、Claude 会话数据、审批提示
+ * Buddy 核心状态机
+ * 管理 7 种 Persona 状态、AI 会话数据、审批提示
  */
 
 #ifndef BUDDY_STATE_H
@@ -27,7 +27,7 @@ typedef enum {
     PERSONA_COUNT
 } PersonaState;
 
-/* Claude 会话状态 */
+/* AI 会话状态 */
 typedef struct {
     uint8_t  sessions_total;
     uint8_t  sessions_running;
@@ -43,10 +43,10 @@ typedef struct {
     char     prompt_id[40];     /* 待审批请求 ID；空 = 无审批 */
     char     prompt_tool[20];
     char     prompt_hint[44];
-    uint8_t  usage_rolling;     /* Zen 套餐用量 0-100 (滚动窗口), 0xFF=未知 */
+    uint8_t  usage_rolling;     /* 套餐用量 0-100 (滚动窗口), 0xFF=未知 */
     uint8_t  usage_weekly;      /* 每周用量 0-100, 0xFF=未知 */
     uint8_t  usage_monthly;     /* 每月用量 0-100, 0xFF=未知 */
-} ClaudeState;
+} SessionState;
 
 /* 全局状态 */
 typedef struct {
@@ -104,13 +104,13 @@ typedef struct {
 void buddy_state_init(void);
 
 /* 状态机 */
-PersonaState buddy_derive_state(const ClaudeState *s);
+PersonaState buddy_derive_state(const SessionState *s);
 void         buddy_trigger_oneshot(PersonaState s, uint32_t dur_ms);
 void         buddy_update_state(void);
 
 /* 数据轮询（从 UART 解析 JSON） */
-void buddy_data_poll(ClaudeState *out);
-void buddy_apply_json_line(const char *line, ClaudeState *out);
+void buddy_data_poll(SessionState *out);
+void buddy_apply_json_line(const char *line, SessionState *out);
 
 /* 连接状态 */
 bool buddy_data_connected(void);
@@ -121,7 +121,7 @@ void buddy_set_demo(bool on);
 bool buddy_is_demo(void);
 
 /* 运行时访问 */
-ClaudeState*   buddy_get_claude_state(void);
+SessionState*  buddy_get_session_state(void);
 BuddyRuntime*  buddy_get_runtime(void);
 BuddyUIState*  buddy_get_ui_state(void);
 const char*    buddy_state_name(PersonaState s);

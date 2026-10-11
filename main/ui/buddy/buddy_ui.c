@@ -1,7 +1,7 @@
 /**
  * @file buddy_ui.c
  * Buddy 主页面 UI 实现
- * 从 claude-desktop-buddy 的 main.cpp 迁移
+ * Buddy 主界面实现
  */
 
 #include "buddy_ui.h"
@@ -105,7 +105,7 @@ static bool s_settings_visible = false;
 static bool s_approval_visible = false;
 static InfoPageIdx s_info_idx = INFO_PAGE_ABOUT;
 static int s_menu_selected = 0;
-static uint32_t s_claude_refresh_ms = 0;   /* INFO-Claude 页实时刷新节流 */
+static uint32_t s_session_refresh_ms = 0;   /* INFO-Session 页实时刷新节流 */
 
 /* 时钟 */
 static int s_clock_h = 12;
@@ -174,7 +174,7 @@ static const char *s_setting_texts[BUDDY_SET_MAX] = {
 static const char *s_info_titles[INFO_PAGE_MAX] = {
     "About",
     "Buttons",
-    "opencode",
+    "Session",
     "Device",
     "Network",
     "Battery",
@@ -445,14 +445,14 @@ static void create_info_page(void) {
     lv_obj_center(next_label);
 }
 
-/* INFO-Claude 页: 实时 opencode 状态
+/* INFO-Session 页: 实时会话状态
  * 由 update_info_content (翻页/进入时) 与 buddy_ui_anim_tick (1Hz 节流) 共同驱动 */
-static void update_info_claude_content(void) {
+static void update_info_session_content(void) {
     if (!s_info_content) return;
-    ClaudeState *cs = buddy_get_claude_state();
+    SessionState *cs = buddy_get_session_state();
     bool online = buddy_data_connected();
     lv_label_set_text_fmt(s_info_content,
-        "opencode Status\n"
+        "Session Status\n"
         "===============\n"
         "Link: %s\n"
         "Msg: %s\n"
@@ -505,8 +505,8 @@ static void update_info_content(void) {
             "  Click = Confirm");
         break;
     }
-    case INFO_PAGE_CLAUDE: {
-        update_info_claude_content();
+    case INFO_PAGE_SESSION: {
+        update_info_session_content();
         break;
     }
     case INFO_PAGE_DEVICE: {
@@ -564,7 +564,6 @@ static void update_info_content(void) {
         lv_label_set_text(s_info_content,
             "Credits\n"
             "=======\n"
-            "Design: claude-desktop-buddy\n"
             "Port: Elara Team\n\n"
             "Libraries:\n"
             "  LVGL 9.1\n"
@@ -1300,12 +1299,12 @@ void buddy_ui_anim_tick(uint32_t tick) {
         buddy_anim_render_to(s_pet_ascii_box, (SCREEN_W - 16) / 2, 45);
     }
 
-    /* INFO-Claude 页实时刷新 (1Hz 节流, 主循环每帧调用) */
-    if (s_mode == BUDDY_MODE_INFO && s_info_idx == INFO_PAGE_CLAUDE) {
+    /* INFO-Session 页实时刷新 (1Hz 节流, 主循环每帧调用) */
+    if (s_mode == BUDDY_MODE_INFO && s_info_idx == INFO_PAGE_SESSION) {
         uint32_t now = lv_tick_get();
-        if ((int32_t)(now - s_claude_refresh_ms) >= 1000) {
-            s_claude_refresh_ms = now;
-            update_info_claude_content();
+        if ((int32_t)(now - s_session_refresh_ms) >= 1000) {
+            s_session_refresh_ms = now;
+            update_info_session_content();
         }
     }
 }

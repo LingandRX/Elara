@@ -1,7 +1,7 @@
 /**
  * @file buddy_anim.h
  * Buddy ASCII 角色动画系统（18 种角色 × 7 种状态）
- * 从 claude-desktop-buddy 的 buddy.h 迁移
+ * Buddy 角色动画
  */
 
 #ifndef BUDDY_ANIM_H

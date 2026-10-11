@@ -1,6 +1,6 @@
 /**
  * @file xfer.h
- * 角色包传输协议（从 claude-desktop-buddy 的 xfer.h 迁移）
+ * 角色包传输协议
  */
 
 #ifndef XFER_H

@@ -17,7 +17,7 @@
 static const char *TAG = "BUDDY_STATE";
 
 /* 全局状态实例 */
-static ClaudeState  s_claude = {0};
+static SessionState s_session = {0};
 static BuddyRuntime s_runtime = {
     .swallow_btn_a = false,
     .swallow_btn_b = false,
@@ -82,12 +82,12 @@ static struct {
 } s_rtc = {0};
 
 void buddy_state_init(void) {
-    memset(&s_claude, 0, sizeof(s_claude));
+    memset(&s_session, 0, sizeof(s_session));
     memset(&s_runtime, 0, sizeof(s_runtime));
     /* 用量初始为未知 (0xFF)，收到 usage 数据后更新 */
-    s_claude.usage_rolling = 0xFF;
-    s_claude.usage_weekly  = 0xFF;
-    s_claude.usage_monthly = 0xFF;
+    s_session.usage_rolling = 0xFF;
+    s_session.usage_weekly  = 0xFF;
+    s_session.usage_monthly = 0xFF;
     s_runtime.base_state = PERSONA_SLEEP;
     s_runtime.active_state = PERSONA_SLEEP;
     ESP_LOGI(TAG, "Buddy state initialized");
@@ -98,12 +98,12 @@ const char* buddy_state_name(PersonaState s) {
     return "unknown";
 }
 
-ClaudeState* buddy_get_claude_state(void) { return &s_claude; }
+SessionState* buddy_get_session_state(void) { return &s_session; }
 BuddyRuntime* buddy_get_runtime(void) { return &s_runtime; }
 BuddyUIState* buddy_get_ui_state(void) { return &s_ui; }
 
-/* 状态推导：从 Claude 会话状态推导基础 Persona 状态 */
-PersonaState buddy_derive_state(const ClaudeState *s) {
+/* 状态推导：从会话状态推导基础 Persona 状态 */
+PersonaState buddy_derive_state(const SessionState *s) {
     if (!s->connected)           return PERSONA_IDLE;
     if (s->sessions_waiting > 0)  return PERSONA_ATTENTION;
     if (s->recently_completed)    return PERSONA_CELEBRATE;
@@ -150,7 +150,7 @@ static void matrixify(char *s) {
 extern bool xfer_command(cJSON *doc);
 extern void xfer_init(void);
 
-static void apply_json(const char *line, ClaudeState *out) {
+static void apply_json(const char *line, SessionState *out) {
     cJSON *doc = cJSON_Parse(line);
     if (!doc) return;
 
@@ -215,7 +215,7 @@ static void apply_json(const char *line, ClaudeState *out) {
         out->n_lines = n;
     }
 
-    /* Zen 套餐用量: {"usage":{"rolling":0,"weekly":4,"monthly":2}} (0-100) */
+    /* 套餐用量: {"usage":{"rolling":0,"weekly":4,"monthly":2}} (0-100) */
     cJSON *usage = cJSON_GetObjectItem(doc, "usage");
     if (cJSON_IsObject(usage)) {
         cJSON *ur = cJSON_GetObjectItem(usage, "rolling");
@@ -264,12 +264,12 @@ static void apply_json(const char *line, ClaudeState *out) {
     cJSON_Delete(doc);
 }
 
-void buddy_apply_json_line(const char *line, ClaudeState *out) {
+void buddy_apply_json_line(const char *line, SessionState *out) {
     apply_json(line, out);
 }
 
 /* 行缓冲 feed */
-static void linebuf_feed(LineBuf *lb, const char *data, size_t len, ClaudeState *out) {
+static void linebuf_feed(LineBuf *lb, const char *data, size_t len, SessionState *out) {
     for (size_t i = 0; i < len; i++) {
         char c = data[i];
         if (c == '\n' || c == '\r') {
@@ -285,7 +285,7 @@ static void linebuf_feed(LineBuf *lb, const char *data, size_t len, ClaudeState 
 }
 
 /* 从 USB 轮询数据 */
-void buddy_data_poll(ClaudeState *out) {
+void buddy_data_poll(SessionState *out) {
     uint32_t now_ms = esp_timer_get_time() / 1000;
 
     /* Demo 模式 */
@@ -315,7 +315,7 @@ void buddy_data_poll(ClaudeState *out) {
 
 /* 外部供 uart_comm 调用 */
 void buddy_feed_usb_line(const char *data, size_t len) {
-    linebuf_feed(&s_usb_line, data, len, &s_claude);
+    linebuf_feed(&s_usb_line, data, len, &s_session);
 }
 
 bool buddy_data_connected(void) {
@@ -345,11 +345,11 @@ bool buddy_rtc_valid(void) { return s_runtime.rtc_valid; }
 void buddy_set_rtc_valid(bool v) { s_runtime.rtc_valid = v; }
 
 bool buddy_has_pending_prompt(void) {
-    return s_claude.prompt_id[0] != '\0' && !s_runtime.response_sent;
+    return s_session.prompt_id[0] != '\0' && !s_runtime.response_sent;
 }
 
 void buddy_clear_prompt(void) {
-    s_claude.prompt_id[0] = '\0';
+    s_session.prompt_id[0] = '\0';
     s_runtime.response_sent = false;
 }
 

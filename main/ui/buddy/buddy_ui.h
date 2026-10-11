@@ -1,7 +1,7 @@
 /**
  * @file buddy_ui.h
  * Buddy 主页面 UI
- * 从 claude-desktop-buddy 的 main.cpp 迁移
+ * Buddy 主界面
  */
 
 #ifndef BUDDY_UI_H
@@ -27,7 +27,7 @@ typedef enum {
 typedef enum {
     INFO_PAGE_ABOUT = 0,
     INFO_PAGE_BUTTONS,
-    INFO_PAGE_CLAUDE,
+    INFO_PAGE_SESSION,
     INFO_PAGE_DEVICE,
     INFO_PAGE_NETWORK,
     INFO_PAGE_BATTERY,
@@ -176,7 +176,7 @@ bool buddy_ui_is_approval_visible(void);
 /* ============ PET 页面 ============ */
 
 /**
- * 设置 opencode Zen 套餐用量显示
+ * 设置套餐用量显示
  * @param rolling  滚动窗口用量 (0-100)
  * @param weekly   每周用量 (0-100)
  * @param monthly  每月用量 (0-100)

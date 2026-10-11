@@ -1,10 +1,10 @@
-# CLAUDE.md
+# Elara 工程指南
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+本文件为在本仓库中工作的 AI 编码代理提供工程说明。
 
 ## 项目概述
 
-基于 ESP-IDF（推荐 6.0.x，组件约束 `idf >= 5.0`）的 ESP32-S3 桌面宠物设备项目（Elara Buddy，从 claude-desktop-buddy 迁移），使用 ESP32-S3-Touch-LCD-1.9 开发板，包含 ST7789 LCD 显示屏驱动、CST816T 触摸驱动、Buddy 宠物状态机 UI、WiFi/TCP 网络通信、SNTP 时间同步、电池监测和 LittleFS 存储等功能。
+基于 ESP-IDF（推荐 6.0.x，组件约束 `idf >= 5.0`）的 ESP32-S3 桌面宠物设备项目（Elara Buddy），使用 ESP32-S3-Touch-LCD-1.9 开发板，包含 ST7789 LCD 显示屏驱动、CST816T 触摸驱动、Buddy 宠物状态机 UI、WiFi/TCP 网络通信、SNTP 时间同步、电池监测和 LittleFS 存储等功能。
 
 ## 开发板资料
 
@@ -33,7 +33,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `main/ui/wifi_ui.c` - WiFi 管理页面（扫描列表/连接状态/密码输入，经 wifi_manager API 操作）
 - `main/ui/lvgl_chat_ui.c` - LVGL 聊天界面（兼容遗留）
 - `main/ui/lvgl_widgets.c` - LVGL 自定义控件
-- `main/buddy/buddy_state.c` - Buddy 核心状态机（7 种 Persona 状态、Claude 会话数据、审批提示）
+- `main/buddy/buddy_state.c` - Buddy 核心状态机（7 种 Persona 状态、AI 会话数据、审批提示）
 - `main/buddy/buddy_stats.c` - Buddy 宠物统计（等级/心情/能量等，NVS 持久化）
 - `main/comm/uart_comm.c` - UART 通信协议（JSON 命令解析）
 - `main/comm/tcp_server.c` - TCP Server（端口 8080，网络指令接收）

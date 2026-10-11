@@ -145,7 +145,7 @@ sequenceDiagram
 
 ### 7. SNTP 触发依赖 GOT_IP
 
-时间同步只在获得 IP 后启动，且 `s_sntp_started` 一次性保护（WiFi 重连不会重复初始化）。时钟模式（`clocking`）还需 `claude->connected`（曾与 opencode 配对）才启用纯时钟动画。
+时间同步只在获得 IP 后启动，且 `s_sntp_started` 一次性保护（WiFi 重连不会重复初始化）。时钟模式（`clocking`）还需 `session->connected`（曾与上位机配对）才启用纯时钟动画。
 
 ### 8. TCP Server 与 WiFi 解耦
 

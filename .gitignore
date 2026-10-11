@@ -24,12 +24,13 @@ __pycache__/
 *.pyo
 *.egg-info/
 
-# IDE 配置
-.vscode/settings.json
-.vscode/c_cpp_properties.json
-.vscode/launch.json
-.vscode/tasks.json
+# IDE / AI 工具本地配置（不纳入版本控制，设备固件不对接任何 AI 编码工具）
+.vscode/
 .idea/
+.codex/
+.claude/
+.pi/
+.opencode/
 *.swp
 *.swo
 *~
