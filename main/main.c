@@ -387,35 +387,22 @@ static void execute_settings_action(BuddySettingItem item) {
         beep(1800, 30);
         break;
     }
-    case BUDDY_SET_SOUND: {
+    case BUDDY_SET_INFO_PANEL: {
         BuddySettings *set = buddy_settings_get();
-        set->sound = !set->sound;
-        buddy_ui_settings_set_toggle(BUDDY_SET_SOUND, set->sound);
-        if (set->sound) beep(2000, 50);
+        set->hud = !set->hud;                 /* 复用 hud 字段作为信息面板开关 */
+        buddy_ui_settings_set_toggle(BUDDY_SET_INFO_PANEL, set->hud);
         buddy_settings_save();
         break;
     }
-    case BUDDY_SET_WIFI: {
+    case BUDDY_SET_PET_MODE: {
         BuddySettings *set = buddy_settings_get();
-        set->wifi = !set->wifi;
-        buddy_ui_settings_set_toggle(BUDDY_SET_WIFI, set->wifi);
+        set->pet_mode = !set->pet_mode;
         buddy_settings_save();
-        /* 立即启停 Wi-Fi */
-        wifi_manager_set_enabled(set->wifi);
-        break;
-    }
-    case BUDDY_SET_LED: {
-        BuddySettings *set = buddy_settings_get();
-        set->led = !set->led;
-        buddy_ui_settings_set_toggle(BUDDY_SET_LED, set->led);
-        buddy_settings_save();
-        break;
-    }
-    case BUDDY_SET_HUD: {
-        BuddySettings *set = buddy_settings_get();
-        set->hud = !set->hud;
-        buddy_ui_settings_set_toggle(BUDDY_SET_HUD, set->hud);
-        buddy_settings_save();
+        ui->buddy_mode = !set->pet_mode;
+        buddy_ui_settings_set_pet_mode(set->pet_mode);
+        buddy_ui_set_pet_mode(set->pet_mode);
+        buddy_anim_invalidate();
+        beep(1800, 30);
         break;
     }
     case BUDDY_SET_ROTATE: {
@@ -425,26 +412,20 @@ static void execute_settings_action(BuddySettingItem item) {
         beep(1800, 30);
         break;
     }
-    case BUDDY_SET_ASCII: {
-        /* 切换宠物物种（不是开关）：循环切换到下一个角色并持久化到 NVS */
-        ui->buddy_mode = true;               /* 物种角色使用 ASCII 渲染 */
-        buddy_anim_next_species();
-        buddy_anim_invalidate();
-        species_idx_save(buddy_anim_get_species_idx());
-        buddy_ui_settings_set_species(buddy_anim_get_species_name());
-        beep(1800, 30);
+    case BUDDY_SET_WIFI: {
+        BuddySettings *set = buddy_settings_get();
+        set->wifi = !set->wifi;
+        buddy_ui_settings_set_toggle(BUDDY_SET_WIFI, set->wifi);
+        buddy_settings_save();
+        wifi_manager_set_enabled(set->wifi);
         break;
     }
-    case BUDDY_SET_PET_MODE: {
-        /* 宠物展示模式：ASCII pet ↔ 动画 pet (精灵图)，持久化到 NVS */
+    case BUDDY_SET_SOUND: {
         BuddySettings *set = buddy_settings_get();
-        set->pet_mode = !set->pet_mode;
+        set->sound = !set->sound;
+        buddy_ui_settings_set_toggle(BUDDY_SET_SOUND, set->sound);
+        if (set->sound) beep(2000, 50);
         buddy_settings_save();
-        ui->buddy_mode = !set->pet_mode;     /* 动画 pet 时非 ASCII 渲染 */
-        buddy_ui_settings_set_pet_mode(set->pet_mode);
-        buddy_ui_set_pet_mode(set->pet_mode);
-        buddy_anim_invalidate();
-        beep(1800, 30);
         break;
     }
     case BUDDY_SET_AUTO_SLEEP: {
@@ -469,7 +450,8 @@ static void execute_settings_action(BuddySettingItem item) {
         buddy_anim_invalidate();
         break;
     }
-    default: break;
+    default:
+        break;
     }
 }
 
@@ -668,10 +650,10 @@ void app_main(void) {
 
     /* 8. 应用设置（同步到 UI 显示，与 NVS 配置保持一致） */
     BuddySettings *set = buddy_settings_get();
-    buddy_ui_settings_set_toggle(BUDDY_SET_SOUND, set->sound);
+    buddy_ui_settings_set_toggle(BUDDY_SET_INFO_PANEL, set->hud);
+    buddy_ui_settings_set_toggle(BUDDY_SET_ROTATE, set->clock_rot);
     buddy_ui_settings_set_toggle(BUDDY_SET_WIFI, set->wifi);
-    buddy_ui_settings_set_toggle(BUDDY_SET_LED, set->led);
-    buddy_ui_settings_set_toggle(BUDDY_SET_HUD, set->hud);
+    buddy_ui_settings_set_toggle(BUDDY_SET_SOUND, set->sound);
     buddy_ui_settings_set_toggle(BUDDY_SET_AUTO_SLEEP, set->auto_sleep);
 
     /* 8.3 宠物展示模式（ASCII pet / 动画 pet）同步到主页与设置显示 */
@@ -703,9 +685,6 @@ void app_main(void) {
     } else {
         buddy_anim_set_species_idx(species_idx % buddy_anim_get_species_count());
     }
-    /* 同步设置菜单中的物种名显示 */
-    buddy_ui_settings_set_species(buddy_anim_get_species_name());
-
     /* 14. 配置 BOOT 键 GPIO */
     gpio_reset_pin(BOOT_KEY_PIN);
     gpio_set_direction(BOOT_KEY_PIN, GPIO_MODE_INPUT);

@@ -18,7 +18,6 @@ extern "C" {
 /* ============ 显示模式 ============ */
 typedef enum {
     BUDDY_MODE_NORMAL = 0,
-    BUDDY_MODE_PET,
     BUDDY_MODE_INFO,
     BUDDY_MODE_MAX
 } BuddyMode;
@@ -26,12 +25,6 @@ typedef enum {
 /* ============ Info 页面索引 ============ */
 typedef enum {
     INFO_PAGE_ABOUT = 0,
-    INFO_PAGE_BUTTONS,
-    INFO_PAGE_SESSION,
-    INFO_PAGE_DEVICE,
-    INFO_PAGE_NETWORK,
-    INFO_PAGE_BATTERY,
-    INFO_PAGE_CREDITS,
     INFO_PAGE_MAX
 } InfoPageIdx;
 
@@ -48,13 +41,11 @@ typedef enum {
 /* ============ 设置项 ============ */
 typedef enum {
     BUDDY_SET_BRIGHTNESS = 0,
-    BUDDY_SET_SOUND,
-    BUDDY_SET_WIFI,
-    BUDDY_SET_LED,
-    BUDDY_SET_HUD,
+    BUDDY_SET_INFO_PANEL,   /* 信息面板开关（原 HUD） */
+    BUDDY_SET_PET_MODE,
     BUDDY_SET_ROTATE,
-    BUDDY_SET_ASCII,      /* 宠物物种 */
-    BUDDY_SET_PET_MODE,   /* 宠物展示模式: ASCII pet / 动画 pet */
+    BUDDY_SET_WIFI,
+    BUDDY_SET_SOUND,
     BUDDY_SET_AUTO_SLEEP,
     BUDDY_SET_RESET,
     BUDDY_SET_BACK,
@@ -142,8 +133,6 @@ BuddyMode buddy_ui_get_mode(void);
  */
 void buddy_ui_set_persona(uint8_t persona_state);
 
-/* ============ PET 页面 ============ */
-
 /* ============ INFO 页面 ============ */
 
 /**
@@ -151,16 +140,6 @@ void buddy_ui_set_persona(uint8_t persona_state);
  * @param page 页面索引
  */
 void buddy_ui_set_info_page(InfoPageIdx page);
-
-/**
- * 切换到下一页 Info
- */
-void buddy_ui_info_next(void);
-
-/**
- * 切换到上一页 Info
- */
-void buddy_ui_info_prev(void);
 
 /**
  * 获取当前 Info 页面索引
@@ -220,12 +199,6 @@ void buddy_ui_settings_select(BuddySettingItem item);
  * @param on   开关状态
  */
 void buddy_ui_settings_set_toggle(BuddySettingItem item, bool on);
-
-/**
- * 更新宠物物种显示（BUDDY_SET_ASCII 项：切换宠物角色而非开关）
- * @param name 物种名称（如 "cat"、"capybara"）
- */
-void buddy_ui_settings_set_species(const char *name);
 
 /**
  * 更新亮度设置显示

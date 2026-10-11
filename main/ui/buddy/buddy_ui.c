@@ -43,10 +43,6 @@ static lv_obj_t *s_battery_label = NULL;
 static lv_obj_t *s_persona_label = NULL;
 static lv_obj_t *s_mood_dots[3] = {NULL, NULL, NULL};
 
-/* PET 模式 */
-static lv_obj_t *s_pet_page = NULL;
-static lv_obj_t *s_pet_ascii_box = NULL;
-
 /* INFO 模式 */
 static lv_obj_t *s_info_page = NULL;
 static lv_obj_t *s_info_title = NULL;
@@ -74,21 +70,17 @@ static bool s_menu_visible = false;
 static bool s_settings_visible = false;
 static InfoPageIdx s_info_idx = INFO_PAGE_ABOUT;
 static int s_menu_selected = 0;
-static uint32_t s_session_refresh_ms = 0;   /* INFO-Session 页实时刷新节流 */
 
 /* 时钟 */
 static int s_clock_h = 12;
 static int s_clock_m = 0;
 static int s_clock_s = 0;
 
-/* PET 用量 */
-
 /* 设置状态 */
 static int  s_brightness_pct = 80;
 static bool s_set_sound = true;
 static bool s_set_wifi = true;
-static bool s_set_led = true;
-static bool s_set_hud = true;
+static bool s_set_info_panel = true;
 static bool s_set_rotate = false;
 static bool s_set_auto_sleep = false;
 
@@ -102,9 +94,6 @@ static BuddyMenuActionCb s_menu_action_cb = NULL;
 /* 设置项点击动作回调 */
 static BuddySettingActionCb s_settings_action_cb = NULL;
 
-/* 前向声明 */
-static void info_nav_btn_cb(lv_event_t *e);
-
 /* ============ 菜单文本 ============ */
 static const char *s_menu_texts[BUDDY_MENU_MAX] = {
     LV_SYMBOL_IMAGE   " 宠物图鉴",
@@ -116,28 +105,20 @@ static const char *s_menu_texts[BUDDY_MENU_MAX] = {
 
 /* ============ 设置项文本 ============ */
 static const char *s_setting_texts[BUDDY_SET_MAX] = {
-    LV_SYMBOL_IMAGE     " Brightness",
-    LV_SYMBOL_VOLUME_MAX" Sound",
+    LV_SYMBOL_IMAGE     " 亮度",
+    LV_SYMBOL_EYE_OPEN  " 信息面板",
+    LV_SYMBOL_VIDEO     " 宠物模式",
+    LV_SYMBOL_REFRESH   " 旋转",
     LV_SYMBOL_WIFI      " Wi-Fi",
-    LV_SYMBOL_BULLET    " LED",
-    LV_SYMBOL_EYE_OPEN  " HUD",
-    LV_SYMBOL_REFRESH   " Rotate",
-    LV_SYMBOL_FILE      " Pet",
-    LV_SYMBOL_VIDEO     " Pet Mode",
-    LV_SYMBOL_CHARGE    " Auto Sleep",
-    LV_SYMBOL_TRASH     " Reset",
-    LV_SYMBOL_LEFT      " Back",
+    LV_SYMBOL_VOLUME_MAX" 声音",
+    LV_SYMBOL_CHARGE    " 自动休眠",
+    LV_SYMBOL_TRASH     " 恢复出厂",
+    LV_SYMBOL_LEFT      " 返回",
 };
 
 /* ============ Info 页面标题 ============ */
 static const char *s_info_titles[INFO_PAGE_MAX] = {
-    "About",
-    "Buttons",
-    "Session",
-    "Device",
-    "Network",
-    "Battery",
-    "Credits",
+    "关于",
 };
 
 /* ============ 辅助函数 ============ */
@@ -157,7 +138,6 @@ static inline void obj_set_hidden(lv_obj_t *obj, bool hidden) {
 
 static void switch_mode_pages(void) {
     obj_set_hidden(s_normal_page, s_mode != BUDDY_MODE_NORMAL);
-    obj_set_hidden(s_pet_page,    s_mode != BUDDY_MODE_PET);
     obj_set_hidden(s_info_page,   s_mode != BUDDY_MODE_INFO);
 }
 
@@ -242,45 +222,8 @@ static void create_normal_page(void) {
     lv_obj_align(hint, LV_ALIGN_TOP_MID, 0, 292);
 }
 
-/* ============ PET 页面创建 ============ */
-
-static void create_pet_page(void) {
-    s_pet_page = lv_obj_create(s_container);
-    lv_obj_set_size(s_pet_page, SCREEN_W, SCREEN_H);
-    lv_obj_set_style_bg_color(s_pet_page, COLOR_BG, 0);
-    lv_obj_set_style_border_width(s_pet_page, 0, 0);
-    lv_obj_set_style_radius(s_pet_page, 0, 0);
-    obj_set_pad_all(s_pet_page, 0);
-    lv_obj_align(s_pet_page, LV_ALIGN_TOP_LEFT, 0, 0);
-    lv_obj_clear_flag(s_pet_page, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(s_pet_page, LV_OBJ_FLAG_HIDDEN);
-
-    /* 标题 */
-    lv_obj_t *title = lv_label_create(s_pet_page);
-    lv_label_set_text(title, LV_SYMBOL_CHARGE " PET");
-    lv_obj_set_style_text_color(title, COLOR_ACCENT, 0);
-    lv_obj_set_style_text_font(title, BUDDY_FONT_DEFAULT, 0);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
-
-    /* ASCII Pet 预览区 */
-    s_pet_ascii_box = lv_obj_create(s_pet_page);
-    lv_obj_set_size(s_pet_ascii_box, SCREEN_W - 16, 150);
-    lv_obj_set_style_bg_color(s_pet_ascii_box, COLOR_PANEL, 0);
-    lv_obj_set_style_border_width(s_pet_ascii_box, 1, 0);
-    lv_obj_set_style_border_color(s_pet_ascii_box, COLOR_TEXT_DIM, 0);
-    lv_obj_set_style_radius(s_pet_ascii_box, 6, 0);
-    obj_set_pad_all(s_pet_ascii_box, 4);
-    lv_obj_align(s_pet_ascii_box, LV_ALIGN_TOP_MID, 0, 40);
-    lv_obj_clear_flag(s_pet_ascii_box, LV_OBJ_FLAG_SCROLLABLE);
-
-    /* 底部提示 */
-    lv_obj_t *hint = lv_label_create(s_pet_page);
-    lv_label_set_text(hint, LV_SYMBOL_LEFT " swipe to exit " LV_SYMBOL_RIGHT);
-    lv_obj_set_style_text_color(hint, COLOR_TEXT_DIM, 0);
-    lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -6);
-}
-
 /* ============ INFO 页面创建 ============ */
+static void info_long_press_cb(lv_event_t *e);
 
 static void create_info_page(void) {
     s_info_page = lv_obj_create(s_container);
@@ -304,12 +247,12 @@ static void create_info_page(void) {
     lv_obj_clear_flag(title_bar, LV_OBJ_FLAG_SCROLLABLE);
 
     s_info_title = lv_label_create(title_bar);
-    lv_label_set_text(s_info_title, "About");
+    lv_label_set_text(s_info_title, "关于");
     lv_obj_set_style_text_color(s_info_title, COLOR_TEXT, 0);
     lv_obj_align(s_info_title, LV_ALIGN_LEFT_MID, 4, 0);
 
     s_info_page_idx = lv_label_create(title_bar);
-    lv_label_set_text(s_info_page_idx, "1/6");
+    lv_label_set_text(s_info_page_idx, "1/1");
     lv_obj_set_style_text_color(s_info_page_idx, COLOR_TEXT_DIM, 0);
     lv_obj_align(s_info_page_idx, LV_ALIGN_RIGHT_MID, -4, 0);
 
@@ -321,56 +264,17 @@ static void create_info_page(void) {
     lv_obj_set_size(s_info_content, SCREEN_W - 12, SCREEN_H - 56);
     lv_obj_align(s_info_content, LV_ALIGN_TOP_LEFT, 6, 38);
     lv_obj_clear_flag(s_info_content, LV_OBJ_FLAG_SCROLLABLE);
-
-    /* 底部导航按钮 (点击翻页, 滑动由驱动层检测) */
-    lv_obj_t *prev_btn = lv_obj_create(s_info_page);
-    lv_obj_set_size(prev_btn, 56, 24);
-    lv_obj_set_style_bg_color(prev_btn, COLOR_PANEL, 0);
-    lv_obj_set_style_border_width(prev_btn, 0, 0);
-    lv_obj_set_style_radius(prev_btn, 6, 0);
-    lv_obj_clear_flag(prev_btn, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(prev_btn, LV_ALIGN_BOTTOM_LEFT, 6, -4);
-    lv_obj_add_event_cb(prev_btn, info_nav_btn_cb, LV_EVENT_CLICKED, (void *)1);
-    lv_obj_t *prev_label = lv_label_create(prev_btn);
-    lv_label_set_text(prev_label, LV_SYMBOL_LEFT " prev");
-    lv_obj_set_style_text_color(prev_label, COLOR_TEXT, 0);
-    lv_obj_center(prev_label);
-
-    lv_obj_t *next_btn = lv_obj_create(s_info_page);
-    lv_obj_set_size(next_btn, 56, 24);
-    lv_obj_set_style_bg_color(next_btn, COLOR_PANEL, 0);
-    lv_obj_set_style_border_width(next_btn, 0, 0);
-    lv_obj_set_style_radius(next_btn, 6, 0);
-    lv_obj_clear_flag(next_btn, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(next_btn, LV_ALIGN_BOTTOM_RIGHT, -6, -4);
-    lv_obj_add_event_cb(next_btn, info_nav_btn_cb, LV_EVENT_CLICKED, (void *)2);
-    lv_obj_t *next_label = lv_label_create(next_btn);
-    lv_label_set_text(next_label, "next " LV_SYMBOL_RIGHT);
-    lv_obj_set_style_text_color(next_label, COLOR_TEXT, 0);
-    lv_obj_center(next_label);
+    lv_obj_add_flag(s_info_content, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_info_content, info_long_press_cb, LV_EVENT_LONG_PRESSED, NULL);
 }
 
-/* INFO-Session 页: 实时会话状态
- * 由 update_info_content (翻页/进入时) 与 buddy_ui_anim_tick (1Hz 节流) 共同驱动 */
-static void update_info_session_content(void) {
-    if (!s_info_content) return;
-    SessionState *cs = buddy_get_session_state();
-    bool online = buddy_data_connected();
-    lv_label_set_text_fmt(s_info_content,
-        "Session Status\n"
-        "===============\n"
-        "Link: %s\n"
-        "Msg: %s\n"
-        "Running: %d\n"
-        "Waiting: %d\n"
-        "Completed: %s\n"
-        "Tokens: %lu",
-        online ? "Online" : "Offline",
-        cs->msg[0] ? cs->msg : "-",
-        cs->sessions_running,
-        cs->sessions_waiting,
-        cs->recently_completed ? "yes" : "no",
-        (unsigned long)cs->tokens_today);
+/* 关于页长按切换演示模式 */
+static void info_long_press_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) != LV_EVENT_LONG_PRESSED) return;
+    extern void buddy_set_demo(bool on);
+    extern bool buddy_is_demo(void);
+    buddy_set_demo(!buddy_is_demo());
+    lv_label_set_text(s_info_content, buddy_is_demo() ? "演示模式: 开" : "演示模式: 关");
 }
 
 static void update_info_content(void) {
@@ -382,100 +286,20 @@ static void update_info_content(void) {
     switch (s_info_idx) {
     case INFO_PAGE_ABOUT: {
         lv_label_set_text(s_info_content,
-            "Elara Buddy\n"
-            "===========\n"
-            "A desktop companion\n"
-            "for ESP32-S3\n\n"
-            "Version: 1.0.0\n"
-            "LVGL: 9.1\n"
-            "ESP-IDF: 5.5.4\n\n"
-            "Made with love\n"
-            "and caffeine.");
-        break;
-    }
-    case INFO_PAGE_BUTTONS: {
-        lv_label_set_text(s_info_content,
-            "Button Map\n"
-            "==========\n"
-            "BOOT: Menu / Back\n"
-            "Touch: Navigate\n"
-            "Long BOOT: Power\n\n"
-            "In Menu:\n"
-            "  Up/Down = Select\n"
-            "  Click = Confirm");
-        break;
-    }
-    case INFO_PAGE_SESSION: {
-        update_info_session_content();
-        break;
-    }
-    case INFO_PAGE_DEVICE: {
-        lv_label_set_text(s_info_content,
-            "Device Info\n"
-            "===========\n"
-            "Chip: ESP32-S3\n"
-            "CPU: 240MHz\n"
-            "Flash: 16MB\n"
-            "PSRAM: 8MB\n\n"
-            "Display:\n"
-            "  170x320 RGB565\n"
-            "  ST7789 Driver\n\n"
-            "Touch: CST816T\n"
-            "I2C: 0x15\n"
-            "Battery: ADC GPIO4");
-        break;
-    }
-    case INFO_PAGE_NETWORK: {
-        extern bool wifi_manager_get_ip(char *ip_str, size_t max_len);
-        char ip[16] = "-";
-        wifi_manager_get_ip(ip, sizeof(ip));
-        lv_label_set_text_fmt(s_info_content,
-            "Network\n"
-            "=========\n"
-            "WiFi: %s\n"
-            "IP: %s\n\n"
-            "TCP Server:\n"
-            "  Port 8080\n\n"
-            "Transport:\n"
-            "  JSON line protocol",
-            ip[0] ? "Connected" : "Disconnected", ip);
-        break;
-    }
-    case INFO_PAGE_BATTERY: {
-        extern uint32_t battery_get_voltage_mv(void);
-        extern uint8_t battery_get_percentage(void);
-        extern bool battery_is_charging(void);
-        lv_label_set_text_fmt(s_info_content,
-            "Battery\n"
-            "=======\n"
-            "Status: %s\n"
-            "Voltage: %lu mV\n"
-            "Level: %d%%\n\n"
-            "Health:\n"
-            "  Good\n\n"
-            "Type:\n"
-            "  Li-Po 3.7V",
-            battery_is_charging() ? "Charging" : "Discharging",
-            (unsigned long)battery_get_voltage_mv(),
-            battery_get_percentage());
-        break;
-    }
-    case INFO_PAGE_CREDITS: {
-        lv_label_set_text(s_info_content,
-            "Credits\n"
-            "=======\n"
-            "Port: Elara Team\n\n"
-            "Libraries:\n"
-            "  LVGL 9.1\n"
-            "  esp_lcd_st7789\n"
-            "  FreeRTOS\n\n"
-            "Hardware:\n"
-            "  ESP32-S3-Touch\n\n"
-            "Thank you!");
+            "Elara 桌面伴侣\n"
+            "============\n"
+            "版本: 1.0.0\n"
+            "LVGL: 8.4\n"
+            "芯片: ESP32-S3\n"
+            "屏幕: 170x320\n\n"
+            "按键说明:\n"
+            "  BOOT 短按 = 菜单\n"
+            "  BOOT 长按 = 返回\n"
+            "  触摸 = 导航");
         break;
     }
     default:
-        lv_label_set_text(s_info_content, "Unknown page");
+        lv_label_set_text(s_info_content, "未知页面");
         break;
     }
 }
@@ -531,18 +355,6 @@ void buddy_ui_handle_swipe(lv_dir_t dir) {
         ui->menu_open = true;
         ui->menu_sel = 0;
         buddy_ui_show_menu(true);
-    }
-}
-
-/* 底部 prev/next 按钮点击回调 */
-static void info_nav_btn_cb(lv_event_t *e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code != LV_EVENT_CLICKED) return;
-    intptr_t which = (intptr_t)lv_event_get_user_data(e);
-    if (which == 1) {
-        buddy_ui_info_prev();
-    } else if (which == 2) {
-        buddy_ui_info_next();
     }
 }
 
@@ -704,15 +516,11 @@ static void create_settings_overlay(void) {
 
     /* 初始化设置值显示 */
     buddy_ui_settings_set_brightness(s_brightness_pct);
-    buddy_ui_settings_set_toggle(BUDDY_SET_SOUND, s_set_sound);
-    buddy_ui_settings_set_toggle(BUDDY_SET_WIFI, s_set_wifi);
-    buddy_ui_settings_set_toggle(BUDDY_SET_LED, s_set_led);
-    buddy_ui_settings_set_toggle(BUDDY_SET_HUD, s_set_hud);
-    buddy_ui_settings_set_toggle(BUDDY_SET_ROTATE, s_set_rotate);
-    /* Pet 物种名在 buddy_anim_init 之后由 buddy_ui_settings_set_species() 同步 */
-    lv_label_set_text(s_setting_vals[BUDDY_SET_ASCII], "");
-    /* 宠物展示模式: 默认 ASCII, 由 buddy_ui_settings_set_pet_mode() 同步实际设置 */
+    buddy_ui_settings_set_toggle(BUDDY_SET_INFO_PANEL, s_set_info_panel);
     buddy_ui_settings_set_pet_mode(false);
+    buddy_ui_settings_set_toggle(BUDDY_SET_ROTATE, s_set_rotate);
+    buddy_ui_settings_set_toggle(BUDDY_SET_WIFI, s_set_wifi);
+    buddy_ui_settings_set_toggle(BUDDY_SET_SOUND, s_set_sound);
     buddy_ui_settings_set_toggle(BUDDY_SET_AUTO_SLEEP, s_set_auto_sleep);
     lv_label_set_text(s_setting_vals[BUDDY_SET_RESET], "");
     lv_label_set_text(s_setting_vals[BUDDY_SET_BACK], "");
@@ -754,7 +562,6 @@ void buddy_ui_init(void) {
 
     /* 创建各页面 */
     create_normal_page();
-    create_pet_page();
     create_info_page();
     create_menu_overlay();
     create_settings_overlay();
@@ -832,16 +639,6 @@ void buddy_ui_set_info_page(InfoPageIdx page) {
     update_info_content();
 }
 
-void buddy_ui_info_next(void) {
-    s_info_idx = (s_info_idx + 1) % INFO_PAGE_MAX;
-    update_info_content();
-}
-
-void buddy_ui_info_prev(void) {
-    s_info_idx = (s_info_idx + INFO_PAGE_MAX - 1) % INFO_PAGE_MAX;
-    update_info_content();
-}
-
 InfoPageIdx buddy_ui_get_info_page(void) {
     return s_info_idx;
 }
@@ -904,19 +701,16 @@ void buddy_ui_settings_select(BuddySettingItem item) {
 void buddy_ui_settings_set_toggle(BuddySettingItem item, bool on) {
     if (item < 0 || item >= BUDDY_SET_MAX) return;
     switch (item) {
-    case BUDDY_SET_SOUND:  s_set_sound = on;  break;
-    case BUDDY_SET_WIFI:   s_set_wifi = on;   break;
-    case BUDDY_SET_LED:    s_set_led = on;    break;
-    case BUDDY_SET_HUD:    s_set_hud = on;    break;
-    case BUDDY_SET_ROTATE: s_set_rotate = on; break;
+    case BUDDY_SET_INFO_PANEL: s_set_info_panel = on; break;
+    case BUDDY_SET_ROTATE:     s_set_rotate = on; break;
+    case BUDDY_SET_WIFI:       s_set_wifi = on;   break;
+    case BUDDY_SET_SOUND:      s_set_sound = on;  break;
     case BUDDY_SET_AUTO_SLEEP: s_set_auto_sleep = on; break;
     default: break;
     }
     if (s_setting_vals[item]) {
         if (item == BUDDY_SET_BRIGHTNESS) {
             /* 亮度由单独函数处理 */
-        } else if (item == BUDDY_SET_ASCII) {
-            /* Pet 物种名由 buddy_ui_settings_set_species() 显示 */
         } else if (item == BUDDY_SET_PET_MODE) {
             /* 宠物展示模式由 buddy_ui_settings_set_pet_mode() 显示 */
         } else if (item == BUDDY_SET_RESET || item == BUDDY_SET_BACK) {
@@ -928,15 +722,6 @@ void buddy_ui_settings_set_toggle(BuddySettingItem item, bool on) {
     }
 }
 
-/* 设置 Pet 物种显示（BUDDY_SET_ASCII 项：切换宠物角色而非开关） */
-void buddy_ui_settings_set_species(const char *name) {
-    if (s_setting_vals[BUDDY_SET_ASCII] && name) {
-        lv_label_set_text(s_setting_vals[BUDDY_SET_ASCII], name);
-        lv_obj_set_style_text_color(s_setting_vals[BUDDY_SET_ASCII], COLOR_ACCENT, 0);
-    }
-}
-
-/* 设置宠物展示模式显示（BUDDY_SET_PET_MODE 项：ASCII / 动画 pet） */
 void buddy_ui_settings_set_pet_mode(bool animated) {
     if (s_setting_vals[BUDDY_SET_PET_MODE]) {
         lv_label_set_text(s_setting_vals[BUDDY_SET_PET_MODE], animated ? "Anim" : "ASCII");
@@ -1068,18 +853,4 @@ void buddy_ui_anim_tick(uint32_t tick) {
         buddy_anim_render_to(s_anim_canvas, SCREEN_W / 2, ANIM_AREA_H / 2);
     }
 
-    /* PET 页面 ASCII 宠物动画 */
-    if (s_mode == BUDDY_MODE_PET && s_pet_ascii_box) {
-        /* 使用 buddy_anim 渲染到 ASCII Pet 预览区 */
-        buddy_anim_render_to(s_pet_ascii_box, (SCREEN_W - 16) / 2, 45);
-    }
-
-    /* INFO-Session 页实时刷新 (1Hz 节流, 主循环每帧调用) */
-    if (s_mode == BUDDY_MODE_INFO && s_info_idx == INFO_PAGE_SESSION) {
-        uint32_t now = lv_tick_get();
-        if ((int32_t)(now - s_session_refresh_ms) >= 1000) {
-            s_session_refresh_ms = now;
-            update_info_session_content();
-        }
-    }
 }
