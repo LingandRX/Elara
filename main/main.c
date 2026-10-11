@@ -23,6 +23,7 @@
 #include "display/backlight_manager.h"
 #include "input/lvgl_touch.h"
 #include "ui/buddy/buddy_ui.h"
+#include "ui/buddy/buddy_drawer.h"
 #include "ui/buddy/buddy_anim.h"
 #include "ui/pet_ui.h"
 #include "ui/wifi_ui.h"
@@ -333,19 +334,23 @@ static void execute_menu_action(BuddyMenuItem item) {
     buddy_ui_show_menu(false);
 
     switch (item) {
+    case BUDDY_MENU_PETDEX:
+        pet_ui_show(true);
+        break;
+    case BUDDY_MENU_WIFI:
+        wifi_ui_show(true);
+        break;
     case BUDDY_MENU_SETTINGS:
         ui->settings_open = true;
         ui->settings_sel = 0;
         buddy_ui_show_settings(true);
         buddy_ui_settings_select(BUDDY_SET_BRIGHTNESS);
         break;
-    case BUDDY_MENU_WIFI:
-        /* WiFi 管理页面（独立全屏页，BOOT 键返回） */
-        wifi_ui_show(true);
-        break;
-    case BUDDY_MENU_PETDEX:
-        /* Petdex 动画展示页面（独立全屏页，BOOT 键返回） */
-        pet_ui_show(true);
+    case BUDDY_MENU_ABOUT:
+        ui->display_mode = DISP_INFO;
+        ui->info_page = INFO_PAGE_ABOUT;
+        buddy_ui_set_mode(BUDDY_MODE_INFO);
+        buddy_ui_set_info_page(INFO_PAGE_ABOUT);
         break;
     case BUDDY_MENU_SHUTDOWN:
         ESP_LOGI(TAG, "Shutdown requested");
@@ -354,19 +359,6 @@ static void execute_menu_action(BuddyMenuItem item) {
         esp_sleep_enable_ext0_wakeup(BOOT_KEY_PIN, 0);
         esp_deep_sleep_start();
         break;
-    case BUDDY_MENU_HELP:
-        break;
-    case BUDDY_MENU_ABOUT:
-        ui->display_mode = DISP_INFO;
-        ui->info_page = INFO_PAGE_ABOUT;
-        buddy_ui_set_mode(BUDDY_MODE_INFO);
-        buddy_ui_set_info_page(INFO_PAGE_ABOUT);
-        break;
-    case BUDDY_MENU_DEMO:
-        buddy_set_demo(!buddy_is_demo());
-        buddy_anim_invalidate();
-        break;
-    case BUDDY_MENU_CLOSE:
     default:
         buddy_anim_invalidate();
         break;
@@ -530,6 +522,13 @@ static void process_boot_key(void) {
         if (rt->swallow_btn_a) {
             rt->swallow_btn_a = false;
         } else if (press_dur >= 600) {
+            if (buddy_drawer_is_open()) {
+                if (lv_port_disp_lock(-1)) {
+                    buddy_drawer_close();
+                    lv_port_disp_unlock();
+                }
+                return;
+            }
             /* 长按 */
             beep(800, 60);
             if (ui->reset_open) {
@@ -555,6 +554,9 @@ static void process_boot_key(void) {
                 }
             }
         } else {
+            if (buddy_drawer_is_open()) {
+                return;
+            }
             /* 短按 */
             beep(1800, 30);
             if (ui->reset_open) {
@@ -573,10 +575,9 @@ static void process_boot_key(void) {
                 }
             } else {
                 if (lv_port_disp_lock(-1)) {
-                    ui->display_mode = (ui->display_mode + 1) % DISP_COUNT;
-                    if (ui->display_mode == DISP_NORMAL) buddy_ui_set_mode(BUDDY_MODE_NORMAL);
-                    else if (ui->display_mode == DISP_PET) buddy_ui_set_mode(BUDDY_MODE_PET);
-                    else buddy_ui_set_mode(BUDDY_MODE_INFO);
+                    ui->menu_open = true;
+                    ui->menu_sel = 0;
+                    buddy_ui_show_menu(true);
                     lv_port_disp_unlock();
                 }
             }

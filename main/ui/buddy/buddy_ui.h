@@ -37,14 +37,11 @@ typedef enum {
 
 /* ============ 菜单项 ============ */
 typedef enum {
-    BUDDY_MENU_SETTINGS = 0,
+    BUDDY_MENU_PETDEX = 0,
     BUDDY_MENU_WIFI,
-    BUDDY_MENU_PETDEX,
-    BUDDY_MENU_SHUTDOWN,
-    BUDDY_MENU_HELP,
+    BUDDY_MENU_SETTINGS,
     BUDDY_MENU_ABOUT,
-    BUDDY_MENU_DEMO,
-    BUDDY_MENU_CLOSE,
+    BUDDY_MENU_SHUTDOWN,
     BUDDY_MENU_MAX
 } BuddyMenuItem;
 
@@ -93,6 +90,12 @@ void buddy_ui_set_menu_action_cb(BuddyMenuActionCb cb);
 void buddy_ui_set_settings_action_cb(BuddySettingActionCb cb);
 
 /* ============ 初始化与显示 ============ */
+
+/**
+ * 处理触摸滑动（由 lvgl_touch 驱动层回调）
+ * @param dir 滑动方向
+ */
+void buddy_ui_handle_swipe(lv_dir_t dir);
 
 /**
  * 初始化 Buddy UI

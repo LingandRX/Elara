@@ -106,14 +106,11 @@ static void info_nav_btn_cb(lv_event_t *e);
 
 /* ============ 菜单文本 ============ */
 static const char *s_menu_texts[BUDDY_MENU_MAX] = {
-    LV_SYMBOL_SETTINGS " Settings",
-    LV_SYMBOL_WIFI    " WiFi",
-    LV_SYMBOL_IMAGE   " Petdex",
-    LV_SYMBOL_POWER   " Shutdown",
-    LV_SYMBOL_WARNING " Help",
-    LV_SYMBOL_HOME    " About",
-    LV_SYMBOL_PLAY    " Demo",
-    LV_SYMBOL_CLOSE   " Close",
+    LV_SYMBOL_IMAGE   " 宠物图鉴",
+    LV_SYMBOL_WIFI    " 网络",
+    LV_SYMBOL_SETTINGS" 设置",
+    LV_SYMBOL_HOME    " 关于",
+    LV_SYMBOL_POWER   " 关机",
 };
 
 /* ============ 设置项文本 ============ */
@@ -505,21 +502,26 @@ static void overlay_click_close_cb(lv_event_t *e) {
 /* ============ INFO 页面滑动 ============ */
 
 /* 驱动层滑动检测回调 (绕过 LVGL 手势系统, 见 lvgl_touch.c) */
-static void info_swipe_cb(lv_dir_t dir) {
+void buddy_ui_handle_swipe(lv_dir_t dir) {
+    /* Petdex 页面：左右切换动画状态 */
     if (pet_ui_is_visible()) {
-        ESP_LOGI(TAG, "Petdex swipe: dir=%d", dir);
-        if (dir == LV_DIR_LEFT) {
-            pet_ui_next_state();
-        } else if (dir == LV_DIR_RIGHT) {
-            pet_ui_prev_state();
-        }
+        if (dir == LV_DIR_LEFT)  pet_ui_next_state();
+        if (dir == LV_DIR_RIGHT) pet_ui_prev_state();
         return;
     }
-    if (s_mode != BUDDY_MODE_INFO) return;  /* 仅 Info 页面响应滑动 */
-    if (dir == LV_DIR_RIGHT) {
-        buddy_ui_info_prev();
-    } else if (dir == LV_DIR_LEFT) {
-        buddy_ui_info_next();
+    /* 抽屉打开时：上下滑动关闭 */
+    if (buddy_drawer_is_open()) {
+        if (dir == LV_DIR_BOTTOM || dir == LV_DIR_TOP) buddy_drawer_close();
+        return;
+    }
+    /* 主界面：下滑出信息面板（抽屉），上滑出菜单（复用既有菜单覆盖层，见裁定 R6） */
+    if (dir == LV_DIR_BOTTOM) {
+        buddy_drawer_open();
+    } else if (dir == LV_DIR_TOP) {
+        BuddyUIState *ui = buddy_get_ui_state();
+        ui->menu_open = true;
+        ui->menu_sel = 0;
+        buddy_ui_show_menu(true);
     }
 }
 
@@ -748,8 +750,8 @@ void buddy_ui_init(void) {
     create_menu_overlay();
     create_settings_overlay();
 
-    /* 注册驱动层滑动检测回调 (Info 页面左右滑动翻页) */
-    lvgl_touch_set_swipe_cb(info_swipe_cb);
+    /* 注册驱动层滑动检测回调 */
+    lvgl_touch_set_swipe_cb(buddy_ui_handle_swipe);
 
     /* 初始化显示 */
     switch_mode_pages();
