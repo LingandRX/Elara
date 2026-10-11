@@ -443,106 +443,117 @@ git commit -m "feat(ui): 主界面重做 - 状态栏/状态词/心情点，移�
 
 ### Task 4: 修复 LVGL 配置源（中文字体默认生效）【插入任务 · 裁定 R5】
 
-**背景（控制器实测结论）**
-`CONFIG_LV_CONF_SKIP=y` 是 LVGL Kconfig 默认值，导致 `components/lv_conf.h` **完全不被解析**。
-实测证据：
-- 启用 `lv_conf.h`（把 `CONFIG_LV_CONF_SKIP` 改为 n）会**直接构建失败**：
-  `lv_conf_internal.h:39: fatal error: lv_conf.h: No such file or directory`
-  （LVGL 组件不在 `components/` 的 include 路径上，因此该文件对它不可见）。
-- 当前生效的 `LV_FONT_DEFAULT` 是 `CONFIG_LV_FONT_DEFAULT_MONTSERRAT_14`（sdkconfig:4120），
-  Montserrat 14 **不含任何中文字形**。
-- `LV_FONT_DEFAULT` 是 Kconfig 的 **choice**，无法直接指向自定义字体。
-- 因此 `buddy_ui.c` 中 8 处 `lv_obj_set_style_text_font(x, LV_FONT_DEFAULT, 0)` 会让中文显示为方块。
+**背景（控制器实测结论，均已验证）**
+
+1. `CONFIG_LV_CONF_SKIP=y` 是 LVGL Kconfig 默认值 → `components/lv_conf.h` **完全不被解析**。
+2. 把 `CONFIG_LV_CONF_SKIP` 改为 n 会**直接构建失败**：
+   `lv_conf_internal.h:39: fatal error: lv_conf.h: No such file or directory`
+   （LVGL 组件不在 `components/` 的 include 路径上）。
+3. `LV_FONT_DEFAULT` 是 Kconfig 的 **choice**，无法指向自定义字体。
+4. **`CONFIG_LV_FONT_CUSTOM_DECLARE` 方案不可行**（实测）：Kconfig string 在 `sdkconfig.h` 中
+   变成 C 字符串字面量 `"LV_FONT_DECLARE(...)"`，而 `lv_font.h:244-245` 会把它作为**语句**展开 ——
+   字符串字面量语句是 no-op，**不声明任何东西**。
+5. 因此唯一可行路径：**应用层**定义 `BUDDY_FONT_DEFAULT`，替换我们 UI 代码里的 `LV_FONT_DEFAULT`。
+   （LVGL 内部默认字体仍是 Montserrat 14，但我们所有控件都显式设置字体，故不受影响。）
 
 **Files:**
-- Modify: `sdkconfig.defaults`
-- Modify: `main/ui/buddy/buddy_theme.h`
-- Modify: `components/lv_conf.h`（仅更新注释，说明该文件在本工程中不生效）
-- Modify: `AGENTS.md`
+- Modify: `main/ui/buddy/buddy_theme.h`（新增 `BUDDY_FONT_DEFAULT`）
+- Modify: `main/ui/buddy/buddy_ui.c`（8 处替换）
+- Modify: `main/ui/buddy/buddy_anim.c`（1 处替换 + include）
+- Modify: `main/ui/lvgl_widgets.c`（4 处替换 + include + 删除冲突的本地颜色宏）
+- Modify: `components/lv_conf.h`（仅加说明注释）
+- Modify: `AGENTS.md`（记录配置真相源）
 
 **Interfaces:**
 - Consumes: Task 1 的 `lv_font_sc_12/14/20`
-- Produces: 全局默认字体实际指向 `lv_font_sc_14`；`LV_FONT_DEFAULT` 可安全用于中文标签
+- Produces: `BUDDY_FONT_DEFAULT`（= `FONT_MD` = `lv_font_sc_14`）
 
-- [ ] **Step 1: 用 Kconfig 注册自定义字体声明**
+- [ ] **Step 1: 在 buddy_theme.h 新增应用层默认字体**
 
-在 `sdkconfig.defaults` 追加（`LV_FONT_CUSTOM_DECLARE` 会被 `lv_font.h:244-245` 展开为全局声明）：
-
-```
-# 自定义中文字体：声明后可在 Kconfig 默认字体之外全局使用
-CONFIG_LV_FONT_CUSTOM=y
-CONFIG_LV_FONT_CUSTOM_DECLARE=LV_FONT_DECLARE(lv_font_sc_12) LV_FONT_DECLARE(lv_font_sc_14) LV_FONT_DECLARE(lv_font_sc_20)
-```
-
-- [ ] **Step 2: 让 LV_FONT_DEFAULT 指向中文字体**
-
-由于 Kconfig 的 `LV_FONT_DEFAULT` 是 choice，无法指向自定义字体，改为在**应用层**统一设置默认字体。
-在 `buddy_theme.h` 中新增并说明：
+在 `FONT_SM/MD/LG` 定义**之后**加入（注意：`BUDDY_FONT_DEFAULT` 依赖 `FONT_MD`，必须定义在其后）：
 
 ```c
-/* 应用层默认字体：Kconfig 的 LV_FONT_DEFAULT 无法指向自定义字体，
- * 故本工程统一使用 FONT_MD 作为界面默认字体。 */
+/* 应用层默认字体：Kconfig 的 LV_FONT_DEFAULT 是 choice，无法指向自定义字体，
+ * 故本工程统一以 FONT_MD 作为界面默认字体（见 docs/2026-10-11-ui-redesign-design.md §7）。 */
 #define BUDDY_FONT_DEFAULT  FONT_MD
 ```
 
-- [ ] **Step 3: 替换 buddy_ui.c 中的 LV_FONT_DEFAULT**
+- [ ] **Step 2: 替换 buddy_ui.c 中的 LV_FONT_DEFAULT**
 
-Run: `grep -n 'LV_FONT_DEFAULT' main/ui/buddy/buddy_ui.c`
+Run: `grep -c 'LV_FONT_DEFAULT' main/ui/buddy/buddy_ui.c`
+Expected before: `8`
 
-把这 8 处 `lv_obj_set_style_text_font(x, LV_FONT_DEFAULT, 0)` 改为
-`lv_obj_set_style_text_font(x, BUDDY_FONT_DEFAULT, 0)`。
+用 sed 或编辑器把这 8 处 `LV_FONT_DEFAULT` 全部改为 `BUDDY_FONT_DEFAULT`。
 
-- [ ] **Step 4: 处理其他使用 LV_FONT_DEFAULT 的文件**
+Run: `grep -c 'LV_FONT_DEFAULT' main/ui/buddy/buddy_ui.c`
+Expected after: `0`
 
-Run: `grep -rn 'LV_FONT_DEFAULT' main/`
+- [ ] **Step 3: 替换 buddy_anim.c（字符画用等宽）**
 
-已知还有 `main/ui/lvgl_widgets.c`、`main/ui/buddy/buddy_anim.c`、`main/ui/lvgl_chat_ui.c`（后者 Task 8 删除）。
-- `buddy_anim.c`：字符画应使用等宽字体，改为 `lv_obj_set_style_text_font(label, FONT_MD, 0)`
-  （需 `#include "buddy_theme.h"`；注意该文件在 `ui/buddy/` 下，直接包含即可）
-- `lvgl_widgets.c`：改为 `BUDDY_FONT_DEFAULT`（需包含 `buddy_theme.h`）
-- `lvgl_chat_ui.c`：**不改**（Task 8 删除）
+该文件的 ASCII 字符画标签使用 `LV_FONT_DEFAULT`。加 include 并替换：
 
-- [ ] **Step 5: 更新 lv_conf.h 与 AGENTS.md 说明**
+```c
+#include "buddy_theme.h"
+```
+```c
+    lv_obj_set_style_text_font(label, FONT_MD, 0);
+```
+（原为 `LV_FONT_DEFAULT`）
+
+- [ ] **Step 4: 替换 lvgl_widgets.c，并解决颜色宏冲突**
+
+**注意：这一步有个已实测的坑。** `lvgl_widgets.c` 自己定义了
+`COLOR_TEXT` / `COLOR_TEXT_DIM`，而 `buddy_theme.h` 也定义同名宏 ——
+直接 include 会触发 `-Werror` 的 `macro redefined` 错误（实测报错：
+`lvgl_widgets.c:15:9: error: 'COLOR_TEXT' redefined [-Werror]`）。
+
+处理方式：**删除 `lvgl_widgets.c` 里与 `buddy_theme.h` 重名的两个本地宏**
+（`COLOR_TEXT`、`COLOR_TEXT_DIM`），改为使用主题里的定义；保留其余仅本文件使用的宏
+（`COLOR_USER_BUB` / `COLOR_AI_BUB` / `COLOR_SYS_BUB` / `COLOR_LABEL_AI` / `COLOR_LABEL_USER`）。
+
+然后加 `#include "buddy_theme.h"`，并把 4 处 `LV_FONT_DEFAULT` 改为 `BUDDY_FONT_DEFAULT`。
+
+Run: `grep -c 'LV_FONT_DEFAULT' main/ui/lvgl_widgets.c`
+Expected after: `0`
+
+- [ ] **Step 5: 说明 lv_conf.h 不生效 + 更新 AGENTS.md**
 
 在 `components/lv_conf.h` 顶部注释加一行：
 
 ```c
  * 注意：本工程 LVGL 以 Kconfig 为准（CONFIG_LV_CONF_SKIP=y），本文件不参与编译。
- *       字体与默认字体配置见 sdkconfig.defaults 与 main/ui/buddy/buddy_theme.h。
+ *       字体配置见 sdkconfig.defaults 与 main/ui/buddy/buddy_theme.h。
 ```
 
-`AGENTS.md` 的「开发注意事项」追加：
+`AGENTS.md`「开发注意事项」追加：
 
 ```
 - LVGL 配置真相源是 `sdkconfig`（Kconfig），`components/lv_conf.h` **不参与编译**
-  （`CONFIG_LV_CONF_SKIP=y`，且 LVGL 组件看不到该路径）。字体相关配置改
-  `sdkconfig.defaults` 或 `main/ui/buddy/buddy_theme.h`。
+  （`CONFIG_LV_CONF_SKIP=y`，且 LVGL 组件看不到该路径）。界面默认字体用
+  `buddy_theme.h` 的 `BUDDY_FONT_DEFAULT`，不要用 LVGL 的 `LV_FONT_DEFAULT`（那是不含中文的 Montserrat）。
 ```
 
-- [ ] **Step 6: 构建验证（含干净构建）**
+- [ ] **Step 6: 构建验证**
 
-先验证增量构建：
 ```bash
-source /Users/yulinling/.espressif/tools/activate_idf_v6.1.sh >/dev/null 2>&1 && cd /Users/yulinling/.codex/worktrees/ui-redesign/Elara && idf.py build 2>&1 | grep -iE 'error|warning:|Project build complete'
+source /Users/yulinling/.espressif/tools/activate_idf_v6.1.sh >/dev/null 2>&1 && cd /Users/yulinling/.codex/worktrees/ui-redesign/Elara && idf.py build 2>&1 | grep -iE 'error|warning:|Project build complete|binary size'
 ```
-再验证 `sdkconfig.defaults` 生效（新配置会被采纳）：
-```bash
-cd /Users/yulinling/.codex/worktrees/ui-redesign/Elara && idf.py reconfigure 2>&1 | tail -5
-grep -n 'CONFIG_LV_FONT_CUSTOM' sdkconfig
-```
-Expected: 构建通过 0 error / 0 warning；`sdkconfig` 中出现 `CONFIG_LV_FONT_CUSTOM=y` 与 `CONFIG_LV_FONT_CUSTOM_DECLARE=...`。
+Expected: `Project build complete`，0 error / 0 warning。
 
-- [ ] **Step 7: 字形可用性自检**
+- [ ] **Step 7: 全仓残留自检**
 
-Run: `grep -c 'LV_FONT_DEFAULT' main/ui/buddy/buddy_ui.c`
-Expected: `0`（已全部替换为 `BUDDY_FONT_DEFAULT`）。
+Run: `grep -rn 'LV_FONT_DEFAULT' main/ | grep -v lvgl_chat_ui`
+Expected: 无输出（`lvgl_chat_ui.c` 待 Task 8 删除，可豁免）。
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add sdkconfig.defaults components/lv_conf.h main/ui/buddy/buddy_theme.h main/ui/buddy/buddy_ui.c main/ui/buddy/buddy_anim.c main/ui/lvgl_widgets.c AGENTS.md
-git commit -m "fix(ui): 修复 LVGL 配置源，使中文字体成为界面默认字体"
+git add main/ui/buddy/buddy_theme.h main/ui/buddy/buddy_ui.c main/ui/buddy/buddy_anim.c main/ui/lvgl_widgets.c components/lv_conf.h AGENTS.md
+git commit -m "fix(ui): 统一界面默认字体为 BUDDY_FONT_DEFAULT，修正 LVGL 配置认知"
 ```
+
+> 注意：本任务**不改 `sdkconfig.defaults`**。之前尝试的 `CONFIG_LV_FONT_CUSTOM*` 方案已实测无效，
+> 不要重新引入。
 
 ---
 
