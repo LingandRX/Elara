@@ -24,7 +24,6 @@ static lv_obj_t *s_title = NULL;
 static lv_obj_t *s_subtitle = NULL;
 static lv_obj_t *s_row_val[INFO_ROWS] = {0};
 static bool s_open = false;
-static bool s_is_info = true;
 
 static const char *ROW_KEYS[INFO_ROWS] = { "电量", "网络", "存储", "运行", "固件" };
 
@@ -34,6 +33,7 @@ static void panel_anim_cb(void *obj, int32_t y) {
 
 void buddy_drawer_init(lv_obj_t *parent) {
     if (!parent) { ESP_LOGE(TAG, "null parent"); return; }
+    if (s_scrim) return;   /* 只允许初始化一次 */
 
     s_scrim = lv_obj_create(parent);
     lv_obj_set_size(s_scrim, SCREEN_W, SCREEN_H);
@@ -100,7 +100,7 @@ void buddy_drawer_init(lv_obj_t *parent) {
 }
 
 void buddy_drawer_refresh(void) {
-    if (!s_open || !s_is_info) return;
+    if (!s_open) return;
 
     int h = 0, m = 0, sec = 0, y = 0, mo = 0, d = 0, dow = 0;
     if (buddy_get_local_time(&h, &m, &sec, &y, &mo, &d, &dow)) {
@@ -136,8 +136,8 @@ void buddy_drawer_refresh(void) {
     lv_label_set_text(s_row_val[4], "v1.0.0");
 }
 
-void buddy_drawer_open(bool info_panel) {
-    s_is_info = info_panel;
+void buddy_drawer_open(void) {
+    if (s_open) { buddy_drawer_refresh(); return; }
     s_open = true;
     lv_obj_clear_flag(s_scrim, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(s_scrim);
@@ -154,9 +154,11 @@ void buddy_drawer_open(bool info_panel) {
 }
 
 void buddy_drawer_close(void) {
+    if (!s_open) return;
     s_open = false;
+    lv_anim_del(s_panel, panel_anim_cb);          /* 停止未完成的滑入动画 */
+    lv_obj_set_y(s_panel, 0);                      /* 复位到完全展开位置 */
     lv_obj_add_flag(s_scrim, LV_OBJ_FLAG_HIDDEN);
 }
 
 bool buddy_drawer_is_open(void) { return s_open; }
-bool buddy_drawer_is_info_panel(void) { return s_is_info; }
