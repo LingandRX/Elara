@@ -441,7 +441,112 @@ git commit -m "feat(ui): 主界面重做 - 状态栏/状态词/心情点，移�
 
 ---
 
-### Task 4: 抽屉组件与信息面板
+### Task 4: 修复 LVGL 配置源（中文字体默认生效）【插入任务 · 裁定 R5】
+
+**背景（控制器实测结论）**
+`CONFIG_LV_CONF_SKIP=y` 是 LVGL Kconfig 默认值，导致 `components/lv_conf.h` **完全不被解析**。
+实测证据：
+- 启用 `lv_conf.h`（把 `CONFIG_LV_CONF_SKIP` 改为 n）会**直接构建失败**：
+  `lv_conf_internal.h:39: fatal error: lv_conf.h: No such file or directory`
+  （LVGL 组件不在 `components/` 的 include 路径上，因此该文件对它不可见）。
+- 当前生效的 `LV_FONT_DEFAULT` 是 `CONFIG_LV_FONT_DEFAULT_MONTSERRAT_14`（sdkconfig:4120），
+  Montserrat 14 **不含任何中文字形**。
+- `LV_FONT_DEFAULT` 是 Kconfig 的 **choice**，无法直接指向自定义字体。
+- 因此 `buddy_ui.c` 中 8 处 `lv_obj_set_style_text_font(x, LV_FONT_DEFAULT, 0)` 会让中文显示为方块。
+
+**Files:**
+- Modify: `sdkconfig.defaults`
+- Modify: `main/ui/buddy/buddy_theme.h`
+- Modify: `components/lv_conf.h`（仅更新注释，说明该文件在本工程中不生效）
+- Modify: `AGENTS.md`
+
+**Interfaces:**
+- Consumes: Task 1 的 `lv_font_sc_12/14/20`
+- Produces: 全局默认字体实际指向 `lv_font_sc_14`；`LV_FONT_DEFAULT` 可安全用于中文标签
+
+- [ ] **Step 1: 用 Kconfig 注册自定义字体声明**
+
+在 `sdkconfig.defaults` 追加（`LV_FONT_CUSTOM_DECLARE` 会被 `lv_font.h:244-245` 展开为全局声明）：
+
+```
+# 自定义中文字体：声明后可在 Kconfig 默认字体之外全局使用
+CONFIG_LV_FONT_CUSTOM=y
+CONFIG_LV_FONT_CUSTOM_DECLARE=LV_FONT_DECLARE(lv_font_sc_12) LV_FONT_DECLARE(lv_font_sc_14) LV_FONT_DECLARE(lv_font_sc_20)
+```
+
+- [ ] **Step 2: 让 LV_FONT_DEFAULT 指向中文字体**
+
+由于 Kconfig 的 `LV_FONT_DEFAULT` 是 choice，无法指向自定义字体，改为在**应用层**统一设置默认字体。
+在 `buddy_theme.h` 中新增并说明：
+
+```c
+/* 应用层默认字体：Kconfig 的 LV_FONT_DEFAULT 无法指向自定义字体，
+ * 故本工程统一使用 FONT_MD 作为界面默认字体。 */
+#define BUDDY_FONT_DEFAULT  FONT_MD
+```
+
+- [ ] **Step 3: 替换 buddy_ui.c 中的 LV_FONT_DEFAULT**
+
+Run: `grep -n 'LV_FONT_DEFAULT' main/ui/buddy/buddy_ui.c`
+
+把这 8 处 `lv_obj_set_style_text_font(x, LV_FONT_DEFAULT, 0)` 改为
+`lv_obj_set_style_text_font(x, BUDDY_FONT_DEFAULT, 0)`。
+
+- [ ] **Step 4: 处理其他使用 LV_FONT_DEFAULT 的文件**
+
+Run: `grep -rn 'LV_FONT_DEFAULT' main/`
+
+已知还有 `main/ui/lvgl_widgets.c`、`main/ui/buddy/buddy_anim.c`、`main/ui/lvgl_chat_ui.c`（后者 Task 8 删除）。
+- `buddy_anim.c`：字符画应使用等宽字体，改为 `lv_obj_set_style_text_font(label, FONT_MD, 0)`
+  （需 `#include "buddy_theme.h"`；注意该文件在 `ui/buddy/` 下，直接包含即可）
+- `lvgl_widgets.c`：改为 `BUDDY_FONT_DEFAULT`（需包含 `buddy_theme.h`）
+- `lvgl_chat_ui.c`：**不改**（Task 8 删除）
+
+- [ ] **Step 5: 更新 lv_conf.h 与 AGENTS.md 说明**
+
+在 `components/lv_conf.h` 顶部注释加一行：
+
+```c
+ * 注意：本工程 LVGL 以 Kconfig 为准（CONFIG_LV_CONF_SKIP=y），本文件不参与编译。
+ *       字体与默认字体配置见 sdkconfig.defaults 与 main/ui/buddy/buddy_theme.h。
+```
+
+`AGENTS.md` 的「开发注意事项」追加：
+
+```
+- LVGL 配置真相源是 `sdkconfig`（Kconfig），`components/lv_conf.h` **不参与编译**
+  （`CONFIG_LV_CONF_SKIP=y`，且 LVGL 组件看不到该路径）。字体相关配置改
+  `sdkconfig.defaults` 或 `main/ui/buddy/buddy_theme.h`。
+```
+
+- [ ] **Step 6: 构建验证（含干净构建）**
+
+先验证增量构建：
+```bash
+source /Users/yulinling/.espressif/tools/activate_idf_v6.1.sh >/dev/null 2>&1 && cd /Users/yulinling/.codex/worktrees/ui-redesign/Elara && idf.py build 2>&1 | grep -iE 'error|warning:|Project build complete'
+```
+再验证 `sdkconfig.defaults` 生效（新配置会被采纳）：
+```bash
+cd /Users/yulinling/.codex/worktrees/ui-redesign/Elara && idf.py reconfigure 2>&1 | tail -5
+grep -n 'CONFIG_LV_FONT_CUSTOM' sdkconfig
+```
+Expected: 构建通过 0 error / 0 warning；`sdkconfig` 中出现 `CONFIG_LV_FONT_CUSTOM=y` 与 `CONFIG_LV_FONT_CUSTOM_DECLARE=...`。
+
+- [ ] **Step 7: 字形可用性自检**
+
+Run: `grep -c 'LV_FONT_DEFAULT' main/ui/buddy/buddy_ui.c`
+Expected: `0`（已全部替换为 `BUDDY_FONT_DEFAULT`）。
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add sdkconfig.defaults components/lv_conf.h main/ui/buddy/buddy_theme.h main/ui/buddy/buddy_ui.c main/ui/buddy/buddy_anim.c main/ui/lvgl_widgets.c AGENTS.md
+git commit -m "fix(ui): 修复 LVGL 配置源，使中文字体成为界面默认字体"
+```
+
+---
+
+### Task 5: 抽屉组件与信息面板
 
 **Files:**
 - Create: `main/ui/buddy/buddy_drawer.h`、`main/ui/buddy/buddy_drawer.c`
@@ -682,7 +787,7 @@ git commit -m "feat(ui): 新增抽屉组件与信息面板"
 
 ---
 
-### Task 5: 导航改造（手势 + BOOT 键 + 菜单枚举）
+### Task 6: 导航改造（手势 + BOOT 键 + 菜单枚举）
 
 **Files:**
 - Modify: `main/ui/buddy/buddy_ui.c`（滑动回调改为公开函数）
@@ -846,7 +951,7 @@ git commit -m "feat(ui): 手势抽屉导航、BOOT 键与菜单项精简"
 
 ---
 
-### Task 6: 设置精简与显示模式收敛
+### Task 7: 设置精简与显示模式收敛
 
 **Files:**
 - Modify: `main/ui/buddy/buddy_ui.h`（`BuddySettingItem` 精简；`InfoPageIdx` 收敛；`BuddyMode` 收敛）
@@ -988,7 +1093,7 @@ git commit -m "feat(ui): 设置项精简、显示模式收敛为单一关于页"
 
 ---
 
-### Task 7: 子页面重做、中文化与遗留清理
+### Task 8: 子页面重做、中文化与遗留清理
 
 **Files:**
 - Modify: `main/ui/pet_ui.c`（配色 + 中文化）
