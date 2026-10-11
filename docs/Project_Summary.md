@@ -58,7 +58,7 @@ Elara/
 ## 主要功能
 
 ### 1. Buddy 主界面
-- Persona 状态机、时钟、菜单、设置、审批弹窗
+- Persona 状态机、时钟、菜单、设置
 - 电池 / Wi-Fi / 背光相关 HUD
 
 ### 2. Petdex 动画

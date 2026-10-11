@@ -84,10 +84,6 @@ static struct {
 void buddy_state_init(void) {
     memset(&s_session, 0, sizeof(s_session));
     memset(&s_runtime, 0, sizeof(s_runtime));
-    /* 用量初始为未知 (0xFF)，收到 usage 数据后更新 */
-    s_session.usage_rolling = 0xFF;
-    s_session.usage_weekly  = 0xFF;
-    s_session.usage_monthly = 0xFF;
     s_runtime.base_state = PERSONA_SLEEP;
     s_runtime.active_state = PERSONA_SLEEP;
     ESP_LOGI(TAG, "Buddy state initialized");
@@ -215,51 +211,13 @@ static void apply_json(const char *line, SessionState *out) {
         out->n_lines = n;
     }
 
-    /* 套餐用量: {"usage":{"rolling":0,"weekly":4,"monthly":2}} (0-100) */
-    cJSON *usage = cJSON_GetObjectItem(doc, "usage");
-    if (cJSON_IsObject(usage)) {
-        cJSON *ur = cJSON_GetObjectItem(usage, "rolling");
-        cJSON *uw = cJSON_GetObjectItem(usage, "weekly");
-        cJSON *um = cJSON_GetObjectItem(usage, "monthly");
-        if (cJSON_IsNumber(ur)) out->usage_rolling = (uint8_t)cJSON_GetNumberValue(ur);
-        if (cJSON_IsNumber(uw)) out->usage_weekly  = (uint8_t)cJSON_GetNumberValue(uw);
-        if (cJSON_IsNumber(um)) out->usage_monthly = (uint8_t)cJSON_GetNumberValue(um);
-    }
-
-    /* 审批提示 */
-    cJSON *prompt = cJSON_GetObjectItem(doc, "prompt");
-    if (cJSON_IsObject(prompt)) {
-        cJSON *pid = cJSON_GetObjectItem(prompt, "id");
-        cJSON *pt  = cJSON_GetObjectItem(prompt, "tool");
-        cJSON *ph  = cJSON_GetObjectItem(prompt, "hint");
-        if (pid && cJSON_IsString(pid)) {
-            strncpy(out->prompt_id, pid->valuestring, sizeof(out->prompt_id) - 1);
-            out->prompt_id[sizeof(out->prompt_id) - 1] = '\0';
-        }
-        if (pt && cJSON_IsString(pt)) {
-            strncpy(out->prompt_tool, pt->valuestring, sizeof(out->prompt_tool) - 1);
-            out->prompt_tool[sizeof(out->prompt_tool) - 1] = '\0';
-            matrixify(out->prompt_tool);
-        }
-        if (ph && cJSON_IsString(ph)) {
-            strncpy(out->prompt_hint, ph->valuestring, sizeof(out->prompt_hint) - 1);
-            out->prompt_hint[sizeof(out->prompt_hint) - 1] = '\0';
-            matrixify(out->prompt_hint);
-        }
-    } else {
-        out->prompt_id[0] = '\0';
-        out->prompt_tool[0] = '\0';
-        out->prompt_hint[0] = '\0';
-    }
-
     out->last_updated_ms = esp_timer_get_time() / 1000;
     s_runtime.last_live_ms = out->last_updated_ms;
     out->connected = true;
 
-    ESP_LOGI(TAG, "session: total=%u running=%u waiting=%u completed=%d msg=\"%s\" prompt=%s",
+    ESP_LOGI(TAG, "session: total=%u running=%u waiting=%u completed=%d msg=\"%s\"",
              out->sessions_total, out->sessions_running, out->sessions_waiting,
-             out->recently_completed ? 1 : 0, out->msg,
-             out->prompt_id[0] ? "yes" : "no");
+             out->recently_completed ? 1 : 0, out->msg);
 
     cJSON_Delete(doc);
 }
@@ -302,10 +260,6 @@ void buddy_data_poll(SessionState *out) {
         out->tokens_today = f->tokens;
         out->last_updated_ms = now_ms;
         out->connected = true;
-        /* demo: 给用量字段模拟值，PET 页面有显示效果 */
-        out->usage_rolling = (uint8_t)(f->tokens / 1000 % 100);
-        out->usage_weekly  = (uint8_t)(f->tokens / 700 % 100);
-        out->usage_monthly = (uint8_t)(f->tokens / 1400 % 100);
         snprintf(out->msg, sizeof(out->msg), "demo: %s", f->name);
         return;
     }
@@ -343,15 +297,6 @@ bool buddy_is_demo(void) {
 
 bool buddy_rtc_valid(void) { return s_runtime.rtc_valid; }
 void buddy_set_rtc_valid(bool v) { s_runtime.rtc_valid = v; }
-
-bool buddy_has_pending_prompt(void) {
-    return s_session.prompt_id[0] != '\0' && !s_runtime.response_sent;
-}
-
-void buddy_clear_prompt(void) {
-    s_session.prompt_id[0] = '\0';
-    s_runtime.response_sent = false;
-}
 
 void buddy_send_cmd(const char *json) {
     /* 发送到 USB */

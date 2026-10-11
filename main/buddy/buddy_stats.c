@@ -8,6 +8,7 @@
 #include "nvs.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "esp_random.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -53,49 +54,23 @@ void buddy_stats_init(void) {
     if (!s_nvs_open) return;
 
     s_stats.nap_seconds = 0;
-    s_stats.approvals = 0;
-    s_stats.denials = 0;
-    s_stats.vel_idx = 0;
-    s_stats.vel_count = 0;
     s_stats.level = 0;
     s_stats.tokens = 0;
-    memset(s_stats.velocity, 0, sizeof(s_stats.velocity));
 
     /* 读取 NVS */
     esp_err_t err;
     err = nvs_get_u32(s_nvs_handle, "nap", &s_stats.nap_seconds);
     if (err == ESP_ERR_NVS_NOT_FOUND) s_stats.nap_seconds = 0;
 
-    err = nvs_get_u16(s_nvs_handle, "appr", &s_stats.approvals);
-    if (err == ESP_ERR_NVS_NOT_FOUND) s_stats.approvals = 0;
-
-    err = nvs_get_u16(s_nvs_handle, "deny", &s_stats.denials);
-    if (err == ESP_ERR_NVS_NOT_FOUND) s_stats.denials = 0;
-
-    uint8_t vidx = 0, vcnt = 0, lvl = 0;
-    err = nvs_get_u8(s_nvs_handle, "vidx", &vidx);
-    if (err == ESP_ERR_NVS_NOT_FOUND) vidx = 0;
-
-    err = nvs_get_u8(s_nvs_handle, "vcnt", &vcnt);
-    if (err == ESP_ERR_NVS_NOT_FOUND) vcnt = 0;
-
+    uint8_t lvl = 0;
     err = nvs_get_u8(s_nvs_handle, "lvl", &lvl);
     if (err == ESP_ERR_NVS_NOT_FOUND) lvl = 0;
-
-    s_stats.vel_idx = vidx;
-    s_stats.vel_count = vcnt;
     s_stats.level = lvl;
 
     uint32_t tok = 0;
     err = nvs_get_u32(s_nvs_handle, "tok", &tok);
     if (err == ESP_ERR_NVS_NOT_FOUND) tok = 0;
     s_stats.tokens = tok;
-
-    size_t vel_len = sizeof(s_stats.velocity);
-    err = nvs_get_blob(s_nvs_handle, "vel", s_stats.velocity, &vel_len);
-    if (err == ESP_ERR_NVS_NOT_FOUND || vel_len != sizeof(s_stats.velocity)) {
-        memset(s_stats.velocity, 0, sizeof(s_stats.velocity));
-    }
 
     /* 兼容：如果 level 有值但 tokens 为 0，反推 tokens */
     if (s_stats.tokens == 0 && s_stats.level > 0) {
@@ -145,32 +120,12 @@ static void stats_save_if_dirty(void) {
     if (!s_nvs_open) return;
 
     nvs_set_u32(s_nvs_handle, "nap", s_stats.nap_seconds);
-    nvs_set_u16(s_nvs_handle, "appr", s_stats.approvals);
-    nvs_set_u16(s_nvs_handle, "deny", s_stats.denials);
-    nvs_set_u8(s_nvs_handle, "vidx", s_stats.vel_idx);
-    nvs_set_u8(s_nvs_handle, "vcnt", s_stats.vel_count);
     nvs_set_u8(s_nvs_handle, "lvl", s_stats.level);
     nvs_set_u32(s_nvs_handle, "tok", s_stats.tokens);
-    nvs_set_blob(s_nvs_handle, "vel", s_stats.velocity, sizeof(s_stats.velocity));
     nvs_commit(s_nvs_handle);
 
     s_dirty = false;
     _nvs_close();
-}
-
-void buddy_stats_on_approval(uint32_t seconds_to_respond) {
-    s_stats.approvals++;
-    s_stats.velocity[s_stats.vel_idx] = (seconds_to_respond > 65535u) ? 65535u : (uint16_t)seconds_to_respond;
-    s_stats.vel_idx = (s_stats.vel_idx + 1) % 8;
-    if (s_stats.vel_count < 8) s_stats.vel_count++;
-    s_dirty = true;
-    stats_save_if_dirty();
-}
-
-void buddy_stats_on_denial(void) {
-    s_stats.denials++;
-    s_dirty = true;
-    stats_save_if_dirty();
 }
 
 void buddy_stats_on_bridge_tokens(uint32_t bridge_total) {
@@ -218,41 +173,9 @@ void buddy_stats_on_wake(void) {
 
 BuddyStats* buddy_stats_get(void) { return &s_stats; }
 
-uint16_t buddy_stats_median_velocity(void) {
-    if (s_stats.vel_count == 0) return 0;
-    uint16_t tmp[8];
-    memcpy(tmp, s_stats.velocity, sizeof(tmp));
-    uint8_t n = s_stats.vel_count;
-    /* 插入排序 */
-    for (uint8_t i = 1; i < n; i++) {
-        uint16_t k = tmp[i];
-        int8_t j = i - 1;
-        while (j >= 0 && tmp[j] > k) {
-            tmp[j + 1] = tmp[j];
-            j--;
-        }
-        tmp[j + 1] = k;
-    }
-    return tmp[n / 2];
-}
-
 uint8_t buddy_stats_mood_tier(void) {
-    uint16_t vel = buddy_stats_median_velocity();
-    int8_t tier;
-    if (vel == 0) tier = 2;
-    else if (vel < 15) tier = 4;
-    else if (vel < 30) tier = 3;
-    else if (vel < 60) tier = 2;
-    else if (vel < 120) tier = 1;
-    else tier = 0;
-
-    uint16_t a = s_stats.approvals, d = s_stats.denials;
-    if (a + d >= 3) {
-        if (d > a) tier -= 2;
-        else if (d * 2 > a) tier -= 1;
-    }
-    if (tier < 0) tier = 0;
-    return (uint8_t)tier;
+    /* 心情改为随机波动 (0..5)，不再由外部会话数据推导 */
+    return (uint8_t)(esp_random() % 6);
 }
 
 uint8_t buddy_stats_energy_tier(void) {

@@ -57,15 +57,6 @@ static lv_obj_t *s_battery_label = NULL;
 /* PET 模式 */
 static lv_obj_t *s_pet_page = NULL;
 static lv_obj_t *s_pet_ascii_box = NULL;
-static lv_obj_t *s_usage_rolling_label = NULL;
-static lv_obj_t *s_usage_rolling_bar = NULL;
-static lv_obj_t *s_usage_rolling_pct = NULL;
-static lv_obj_t *s_usage_weekly_label = NULL;
-static lv_obj_t *s_usage_weekly_bar = NULL;
-static lv_obj_t *s_usage_weekly_pct = NULL;
-static lv_obj_t *s_usage_monthly_label = NULL;
-static lv_obj_t *s_usage_monthly_bar = NULL;
-static lv_obj_t *s_usage_monthly_pct = NULL;
 
 /* INFO 模式 */
 static lv_obj_t *s_info_page = NULL;
@@ -86,23 +77,12 @@ static lv_obj_t *s_setting_items[BUDDY_SET_MAX];
 static lv_obj_t *s_setting_labels[BUDDY_SET_MAX];
 static lv_obj_t *s_setting_vals[BUDDY_SET_MAX];
 
-/* 审批覆盖层 */
-static lv_obj_t *s_approval_overlay = NULL;
-static lv_obj_t *s_approval_panel = NULL;
-static lv_obj_t *s_approval_title = NULL;
-static lv_obj_t *s_approval_tool = NULL;
-static lv_obj_t *s_approval_prompt = NULL;
-static lv_obj_t *s_btn_approve = NULL;
-static lv_obj_t *s_btn_reject = NULL;
-static lv_obj_t *s_lbl_approve = NULL;
-static lv_obj_t *s_lbl_reject = NULL;
 
 /* ============ 状态变量 ============ */
 static BuddyMode s_mode = BUDDY_MODE_NORMAL;
 static bool s_ui_visible = false;
 static bool s_menu_visible = false;
 static bool s_settings_visible = false;
-static bool s_approval_visible = false;
 static InfoPageIdx s_info_idx = INFO_PAGE_ABOUT;
 static int s_menu_selected = 0;
 static uint32_t s_session_refresh_ms = 0;   /* INFO-Session 页实时刷新节流 */
@@ -113,9 +93,6 @@ static int s_clock_m = 0;
 static int s_clock_s = 0;
 
 /* PET 用量 */
-static int s_usage_rolling = 0;
-static int s_usage_weekly = 0;
-static int s_usage_monthly = 0;
 
 /* 设置状态 */
 static int  s_brightness_pct = 80;
@@ -129,16 +106,12 @@ static bool s_set_auto_sleep = false;
 /* 外部关闭回调 */
 static BuddyOverlayCloseCb s_menu_close_cb = NULL;
 static BuddyOverlayCloseCb s_settings_close_cb = NULL;
-static BuddyOverlayCloseCb s_approval_close_cb = NULL;
 
 /* 菜单项点击动作回调 */
 static BuddyMenuActionCb s_menu_action_cb = NULL;
 
 /* 设置项点击动作回调 */
 static BuddySettingActionCb s_settings_action_cb = NULL;
-
-/* 审批按钮点击动作回调 */
-static BuddyApprovalActionCb s_approval_action_cb = NULL;
 
 /* 前向声明 */
 static void info_nav_btn_cb(lv_event_t *e);
@@ -284,88 +257,20 @@ static void create_pet_page(void) {
 
     /* 标题 */
     lv_obj_t *title = lv_label_create(s_pet_page);
-    lv_label_set_text(title, LV_SYMBOL_CHARGE " USAGE");
+    lv_label_set_text(title, LV_SYMBOL_CHARGE " PET");
     lv_obj_set_style_text_color(title, COLOR_HOT, 0);
     lv_obj_set_style_text_font(title, LV_FONT_DEFAULT, 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
 
-    int y = 40;
-
-    /* Rolling */
-    s_usage_rolling_label = lv_label_create(s_pet_page);
-    lv_label_set_text(s_usage_rolling_label, "Rolling");
-    lv_obj_set_style_text_color(s_usage_rolling_label, COLOR_TEXT, 0);
-    lv_obj_align(s_usage_rolling_label, LV_ALIGN_TOP_LEFT, 8, y);
-
-    s_usage_rolling_bar = lv_bar_create(s_pet_page);
-    lv_obj_set_size(s_usage_rolling_bar, SCREEN_W - 60, BAR_H);
-    lv_bar_set_range(s_usage_rolling_bar, 0, 100);
-    lv_bar_set_value(s_usage_rolling_bar, 0, LV_ANIM_OFF);
-    lv_obj_set_style_bg_color(s_usage_rolling_bar, COLOR_PANEL, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(s_usage_rolling_bar, COLOR_HOT, LV_PART_INDICATOR);
-    lv_obj_set_style_radius(s_usage_rolling_bar, 4, LV_PART_MAIN);
-    lv_obj_set_style_radius(s_usage_rolling_bar, 4, LV_PART_INDICATOR);
-    lv_obj_align(s_usage_rolling_bar, LV_ALIGN_TOP_RIGHT, -8, y + 4);
-
-    s_usage_rolling_pct = lv_label_create(s_usage_rolling_bar);
-    lv_label_set_text(s_usage_rolling_pct, "0%");
-    lv_obj_set_style_text_color(s_usage_rolling_pct, COLOR_TEXT, 0);
-    lv_obj_center(s_usage_rolling_pct);
-    y += ROW_H;
-
-    /* Weekly */
-    s_usage_weekly_label = lv_label_create(s_pet_page);
-    lv_label_set_text(s_usage_weekly_label, "Weekly");
-    lv_obj_set_style_text_color(s_usage_weekly_label, COLOR_TEXT, 0);
-    lv_obj_align(s_usage_weekly_label, LV_ALIGN_TOP_LEFT, 8, y);
-
-    s_usage_weekly_bar = lv_bar_create(s_pet_page);
-    lv_obj_set_size(s_usage_weekly_bar, SCREEN_W - 60, BAR_H);
-    lv_bar_set_range(s_usage_weekly_bar, 0, 100);
-    lv_bar_set_value(s_usage_weekly_bar, 0, LV_ANIM_OFF);
-    lv_obj_set_style_bg_color(s_usage_weekly_bar, COLOR_PANEL, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(s_usage_weekly_bar, COLOR_GREEN, LV_PART_INDICATOR);
-    lv_obj_set_style_radius(s_usage_weekly_bar, 4, LV_PART_MAIN);
-    lv_obj_set_style_radius(s_usage_weekly_bar, 4, LV_PART_INDICATOR);
-    lv_obj_align(s_usage_weekly_bar, LV_ALIGN_TOP_RIGHT, -8, y + 4);
-
-    s_usage_weekly_pct = lv_label_create(s_usage_weekly_bar);
-    lv_label_set_text(s_usage_weekly_pct, "0%");
-    lv_obj_set_style_text_color(s_usage_weekly_pct, COLOR_TEXT, 0);
-    lv_obj_center(s_usage_weekly_pct);
-    y += ROW_H;
-
-    /* Monthly */
-    s_usage_monthly_label = lv_label_create(s_pet_page);
-    lv_label_set_text(s_usage_monthly_label, "Monthly");
-    lv_obj_set_style_text_color(s_usage_monthly_label, COLOR_TEXT, 0);
-    lv_obj_align(s_usage_monthly_label, LV_ALIGN_TOP_LEFT, 8, y);
-
-    s_usage_monthly_bar = lv_bar_create(s_pet_page);
-    lv_obj_set_size(s_usage_monthly_bar, SCREEN_W - 60, BAR_H);
-    lv_bar_set_range(s_usage_monthly_bar, 0, 100);
-    lv_bar_set_value(s_usage_monthly_bar, 0, LV_ANIM_OFF);
-    lv_obj_set_style_bg_color(s_usage_monthly_bar, COLOR_PANEL, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(s_usage_monthly_bar, lv_color_hex(0x64B4FF), LV_PART_INDICATOR);
-    lv_obj_set_style_radius(s_usage_monthly_bar, 4, LV_PART_MAIN);
-    lv_obj_set_style_radius(s_usage_monthly_bar, 4, LV_PART_INDICATOR);
-    lv_obj_align(s_usage_monthly_bar, LV_ALIGN_TOP_RIGHT, -8, y + 4);
-
-    s_usage_monthly_pct = lv_label_create(s_usage_monthly_bar);
-    lv_label_set_text(s_usage_monthly_pct, "0%");
-    lv_obj_set_style_text_color(s_usage_monthly_pct, COLOR_TEXT, 0);
-    lv_obj_center(s_usage_monthly_pct);
-    y += ROW_H;
-
     /* ASCII Pet 预览区 */
     s_pet_ascii_box = lv_obj_create(s_pet_page);
-    lv_obj_set_size(s_pet_ascii_box, SCREEN_W - 16, 90);
+    lv_obj_set_size(s_pet_ascii_box, SCREEN_W - 16, 150);
     lv_obj_set_style_bg_color(s_pet_ascii_box, COLOR_PANEL, 0);
     lv_obj_set_style_border_width(s_pet_ascii_box, 1, 0);
     lv_obj_set_style_border_color(s_pet_ascii_box, COLOR_TEXT_DIM, 0);
     lv_obj_set_style_radius(s_pet_ascii_box, 6, 0);
     obj_set_pad_all(s_pet_ascii_box, 4);
-    lv_obj_align(s_pet_ascii_box, LV_ALIGN_TOP_MID, 0, y + 8);
+    lv_obj_align(s_pet_ascii_box, LV_ALIGN_TOP_MID, 0, 40);
     lv_obj_clear_flag(s_pet_ascii_box, LV_OBJ_FLAG_SCROLLABLE);
 
     /* 底部提示 */
@@ -459,15 +364,13 @@ static void update_info_session_content(void) {
         "Running: %d\n"
         "Waiting: %d\n"
         "Completed: %s\n"
-        "Tokens: %lu\n"
-        "Prompt: %s",
+        "Tokens: %lu",
         online ? "Online" : "Offline",
         cs->msg[0] ? cs->msg : "-",
         cs->sessions_running,
         cs->sessions_waiting,
         cs->recently_completed ? "yes" : "no",
-        (unsigned long)cs->tokens_today,
-        cs->prompt_id[0] ? cs->prompt_tool : "none");
+        (unsigned long)cs->tokens_today);
 }
 
 static void update_info_content(void) {
@@ -497,9 +400,6 @@ static void update_info_content(void) {
             "BOOT: Menu / Back\n"
             "Touch: Navigate\n"
             "Long BOOT: Power\n\n"
-            "In Approval:\n"
-            "  A = Approve\n"
-            "  B = Reject\n\n"
             "In Menu:\n"
             "  Up/Down = Select\n"
             "  Click = Confirm");
@@ -595,9 +495,7 @@ static void overlay_click_close_cb(lv_event_t *e) {
         } else if (overlay == s_settings_overlay && s_settings_close_cb) {
             buddy_ui_show_settings(false);
             s_settings_close_cb();
-        } else if (overlay == s_approval_overlay && s_approval_close_cb) {
-            buddy_ui_hide_approval();
-            s_approval_close_cb();
+        } else if (0) {
         }
     }
 }
@@ -807,107 +705,12 @@ static void create_settings_overlay(void) {
     lv_label_set_text(s_setting_vals[BUDDY_SET_BACK], "");
 }
 
-/* ============ 审批覆盖层创建 ============ */
-
-static void approval_btn_cb(lv_event_t *e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code != LV_EVENT_CLICKED) return;
-    lv_obj_t *target = lv_event_get_target(e);
-    if (target == s_btn_approve) {
-        ESP_LOGI(TAG, "Approval: APPROVED");
-        /* 触发审批动作（发送批准命令） */
-        if (s_approval_action_cb) s_approval_action_cb(true);
-    } else if (target == s_btn_reject) {
-        ESP_LOGI(TAG, "Approval: REJECTED");
-        /* 触发审批动作（发送拒绝命令） */
-        if (s_approval_action_cb) s_approval_action_cb(false);
-    }
-}
-
-static void create_approval_overlay(void) {
-    s_approval_overlay = lv_obj_create(s_container);
-    lv_obj_set_size(s_approval_overlay, SCREEN_W, SCREEN_H);
-    lv_obj_set_style_bg_color(s_approval_overlay, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(s_approval_overlay, LV_OPA_60, 0);
-    lv_obj_set_style_border_width(s_approval_overlay, 0, 0);
-    lv_obj_set_style_radius(s_approval_overlay, 0, 0);
-    obj_set_pad_all(s_approval_overlay, 0);
-    lv_obj_align(s_approval_overlay, LV_ALIGN_TOP_LEFT, 0, 0);
-    lv_obj_clear_flag(s_approval_overlay, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(s_approval_overlay, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(s_approval_overlay, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(s_approval_overlay, overlay_click_close_cb, LV_EVENT_CLICKED, s_approval_overlay);
-
-    s_approval_panel = lv_obj_create(s_approval_overlay);
-    lv_obj_set_size(s_approval_panel, 156, 200);
-    lv_obj_set_style_bg_color(s_approval_panel, COLOR_BG, 0);
-    lv_obj_set_style_border_width(s_approval_panel, 2, 0);
-    lv_obj_set_style_border_color(s_approval_panel, COLOR_HOT, 0);
-    lv_obj_set_style_radius(s_approval_panel, 8, 0);
-    obj_set_pad_all(s_approval_panel, 6);
-    lv_obj_center(s_approval_panel);
-    lv_obj_clear_flag(s_approval_panel, LV_OBJ_FLAG_SCROLLABLE);
-
-    /* 标题 */
-    s_approval_title = lv_label_create(s_approval_panel);
-    lv_label_set_text(s_approval_title, "APPROVAL REQUIRED");
-    lv_obj_set_style_text_color(s_approval_title, COLOR_HOT, 0);
-    lv_obj_set_style_text_font(s_approval_title, LV_FONT_DEFAULT, 0);
-    lv_obj_align(s_approval_title, LV_ALIGN_TOP_MID, 0, 4);
-
-    /* 工具名 */
-    s_approval_tool = lv_label_create(s_approval_panel);
-    lv_label_set_text(s_approval_tool, "Tool: --");
-    lv_obj_set_style_text_color(s_approval_tool, COLOR_TEXT, 0);
-    lv_obj_set_style_text_font(s_approval_tool, LV_FONT_DEFAULT, 0);
-    lv_label_set_long_mode(s_approval_tool, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(s_approval_tool, 140);
-    lv_obj_align(s_approval_tool, LV_ALIGN_TOP_MID, 0, 26);
-
-    /* 提示文本 */
-    s_approval_prompt = lv_label_create(s_approval_panel);
-    lv_label_set_text(s_approval_prompt, "No prompt");
-    lv_obj_set_style_text_color(s_approval_prompt, COLOR_TEXT_DIM, 0);
-    lv_obj_set_style_text_font(s_approval_prompt, LV_FONT_DEFAULT, 0);
-    lv_label_set_long_mode(s_approval_prompt, LV_LABEL_LONG_WRAP);
-    lv_obj_set_size(s_approval_prompt, 140, 80);
-    lv_obj_align(s_approval_prompt, LV_ALIGN_TOP_MID, 0, 50);
-
-    /* A 键批准按钮 */
-    s_btn_approve = lv_btn_create(s_approval_panel);
-    lv_obj_set_size(s_btn_approve, 64, 32);
-    lv_obj_set_style_bg_color(s_btn_approve, COLOR_GREEN, 0);
-    lv_obj_set_style_radius(s_btn_approve, 6, 0);
-    lv_obj_align(s_btn_approve, LV_ALIGN_BOTTOM_LEFT, 4, -4);
-    lv_obj_add_event_cb(s_btn_approve, approval_btn_cb, LV_EVENT_CLICKED, NULL);
-
-    s_lbl_approve = lv_label_create(s_btn_approve);
-    lv_label_set_text(s_lbl_approve, "A OK");
-    lv_obj_set_style_text_color(s_lbl_approve, COLOR_TEXT, 0);
-    lv_obj_center(s_lbl_approve);
-
-    /* B 键拒绝按钮 */
-    s_btn_reject = lv_btn_create(s_approval_panel);
-    lv_obj_set_size(s_btn_reject, 64, 32);
-    lv_obj_set_style_bg_color(s_btn_reject, COLOR_RED, 0);
-    lv_obj_set_style_radius(s_btn_reject, 6, 0);
-    lv_obj_align(s_btn_reject, LV_ALIGN_BOTTOM_RIGHT, -4, -4);
-    lv_obj_add_event_cb(s_btn_reject, approval_btn_cb, LV_EVENT_CLICKED, NULL);
-
-    s_lbl_reject = lv_label_create(s_btn_reject);
-    lv_label_set_text(s_lbl_reject, "B NO");
-    lv_obj_set_style_text_color(s_lbl_reject, COLOR_TEXT, 0);
-    lv_obj_center(s_lbl_reject);
-}
-
 /* ============ 回调注册 ============ */
 
 void buddy_ui_set_overlay_close_cb(BuddyOverlayCloseCb menu_cb,
-                                    BuddyOverlayCloseCb settings_cb,
-                                    BuddyOverlayCloseCb approval_cb) {
+                                    BuddyOverlayCloseCb settings_cb) {
     s_menu_close_cb = menu_cb;
     s_settings_close_cb = settings_cb;
-    s_approval_close_cb = approval_cb;
 }
 
 void buddy_ui_set_menu_action_cb(BuddyMenuActionCb cb) {
@@ -916,10 +719,6 @@ void buddy_ui_set_menu_action_cb(BuddyMenuActionCb cb) {
 
 void buddy_ui_set_settings_action_cb(BuddySettingActionCb cb) {
     s_settings_action_cb = cb;
-}
-
-void buddy_ui_set_approval_action_cb(BuddyApprovalActionCb cb) {
-    s_approval_action_cb = cb;
 }
 
 /* ============ 初始化 ============ */
@@ -946,7 +745,6 @@ void buddy_ui_init(void) {
     create_info_page();
     create_menu_overlay();
     create_settings_overlay();
-    create_approval_overlay();
 
     /* 注册驱动层滑动检测回调 (Info 页面左右滑动翻页) */
     lvgl_touch_set_swipe_cb(info_swipe_cb);
@@ -1005,49 +803,8 @@ void buddy_ui_set_hud_visible(bool visible) {
     obj_set_hidden(s_hud_panel, !visible);
 }
 
-void buddy_ui_show_approval(const char *tool_name, const char *prompt) {
-    if (!s_approval_overlay) return;
-    if (tool_name) {
-        lv_label_set_text_fmt(s_approval_tool, "Tool: %s", tool_name);
-    }
-    if (prompt) {
-        lv_label_set_text(s_approval_prompt, prompt);
-    }
-    lv_obj_clear_flag(s_approval_overlay, LV_OBJ_FLAG_HIDDEN);
-    s_approval_visible = true;
-    lv_obj_move_foreground(s_approval_overlay);
-}
-
-void buddy_ui_hide_approval(void) {
-    obj_set_hidden(s_approval_overlay, true);
-    s_approval_visible = false;
-}
-
-bool buddy_ui_is_approval_visible(void) {
-    return s_approval_visible;
-}
 
 /* ============ PET 页面 ============ */
-
-void buddy_ui_set_usage(int rolling, int weekly, int monthly) {
-    if (rolling < 0) rolling = 0;
-    if (rolling > 100) rolling = 100;
-    if (weekly < 0) weekly = 0;
-    if (weekly > 100) weekly = 100;
-    if (monthly < 0) monthly = 0;
-    if (monthly > 100) monthly = 100;
-    s_usage_rolling = rolling;
-    s_usage_weekly = weekly;
-    s_usage_monthly = monthly;
-
-    if (s_usage_rolling_bar) lv_bar_set_value(s_usage_rolling_bar, rolling, LV_ANIM_ON);
-    if (s_usage_weekly_bar)  lv_bar_set_value(s_usage_weekly_bar, weekly, LV_ANIM_ON);
-    if (s_usage_monthly_bar) lv_bar_set_value(s_usage_monthly_bar, monthly, LV_ANIM_ON);
-
-    if (s_usage_rolling_pct) lv_label_set_text_fmt(s_usage_rolling_pct, "%d%%", rolling);
-    if (s_usage_weekly_pct)  lv_label_set_text_fmt(s_usage_weekly_pct, "%d%%", weekly);
-    if (s_usage_monthly_pct) lv_label_set_text_fmt(s_usage_monthly_pct, "%d%%", monthly);
-}
 
 /* ============ INFO 页面 ============ */
 

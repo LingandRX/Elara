@@ -73,16 +73,12 @@ typedef void (*BuddyMenuActionCb)(BuddyMenuItem item);
 /* 设置项点击动作回调（触摸点击设置项时触发，用于执行对应动作） */
 typedef void (*BuddySettingActionCb)(BuddySettingItem item);
 
-/* 审批按钮点击动作回调（触摸点击审批按钮时触发；approve=true 批准 / false 拒绝） */
-typedef void (*BuddyApprovalActionCb)(bool approve);
-
 /**
  * 注册覆盖层点击外部时的关闭回调
  * 用于同步 main.c 中的 BuddyUIState 状态
  */
 void buddy_ui_set_overlay_close_cb(BuddyOverlayCloseCb menu_cb,
-                                    BuddyOverlayCloseCb settings_cb,
-                                    BuddyOverlayCloseCb approval_cb);
+                                    BuddyOverlayCloseCb settings_cb);
 
 /**
  * 注册菜单项点击动作回调
@@ -95,12 +91,6 @@ void buddy_ui_set_menu_action_cb(BuddyMenuActionCb cb);
  * 触摸点击设置项时触发，用于执行对应动作
  */
 void buddy_ui_set_settings_action_cb(BuddySettingActionCb cb);
-
-/**
- * 注册审批按钮点击动作回调
- * 触摸点击审批弹窗的 OK/NO 按钮时触发
- */
-void buddy_ui_set_approval_action_cb(BuddyApprovalActionCb cb);
 
 /* ============ 初始化与显示 ============ */
 
@@ -155,33 +145,7 @@ void buddy_ui_set_hud_text(const char *text);
  */
 void buddy_ui_set_hud_visible(bool visible);
 
-/**
- * 显示审批弹窗
- * @param tool_name 工具名
- * @param prompt 提示文本
- */
-void buddy_ui_show_approval(const char *tool_name, const char *prompt);
-
-/**
- * 隐藏审批弹窗
- */
-void buddy_ui_hide_approval(void);
-
-/**
- * 判断审批弹窗是否显示
- * @return true=显示中
- */
-bool buddy_ui_is_approval_visible(void);
-
 /* ============ PET 页面 ============ */
-
-/**
- * 设置套餐用量显示
- * @param rolling  滚动窗口用量 (0-100)
- * @param weekly   每周用量 (0-100)
- * @param monthly  每月用量 (0-100)
- */
-void buddy_ui_set_usage(int rolling, int weekly, int monthly);
 
 /* ============ INFO 页面 ============ */
 

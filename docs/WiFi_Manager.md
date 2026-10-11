@@ -149,7 +149,7 @@ sequenceDiagram
 
 ### 8. TCP Server 与 WiFi 解耦
 
-`tcp_server_init()` 无条件创建，绑定 `INADDR_ANY` 监听 8080。**WiFi 关闭时 TCP 回传路径失效**——`comm_console_write_len()` 把设备→主机命令同时发到 TCP 客户端，无连接时直接丢弃，审批回复等会丢失（`uart_comm.c` 注释已注明此场景依赖 TCP）。
+`tcp_server_init()` 无条件创建，绑定 `INADDR_ANY` 监听 8080。**WiFi 关闭时 TCP 回传路径失效**——`comm_console_write_len()` 把设备→主机命令同时发到 TCP 客户端，无连接时直接丢弃，事件回包等会丢失（`uart_comm.c` 注释已注明此场景依赖 TCP）。
 
 ### 9. sdkconfig 编译配置
 

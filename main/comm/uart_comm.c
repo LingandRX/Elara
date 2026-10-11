@@ -25,17 +25,16 @@ static comm_upload_done_cb_t s_upload_done_cb = NULL;
 
 #define RX_BUF_SIZE     512
 
-/* 非阻塞控制台输出: USB 未连接主机时 printf 会因 TX 缓冲满而永久阻塞,
- * WiFi 场景下不能依赖控制台输出. 缓冲满时丢弃而非阻塞.
- * 注意: 本固件控制台走 ROM CDC (esp_usb_cdc_rom_console), usb_serial_jtag
- * 驱动未安装, 首次探测失败后静默跳过, 避免每次调用刷错误日志. */
-static bool s_comm_console_ready = true;
-
 static void comm_console_write_len(const char *s, size_t len) {
-    /* 设备→主机命令 (审批结果/事件/xack) 同时回传当前 TCP 客户端
-     * (WiFi/TCP 场景下 USB 串口不可用, 否则审批回复会丢失) */
+    /* 设备→主机命令 (事件/xack/状态) 同时回传当前 TCP 客户端
+     * (WiFi/TCP 场景下 USB 串口不可用, 否则回包会丢失) */
     tcp_server_send(s, len);
 #ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+    /* 非阻塞控制台输出: USB 未连接主机时 printf 会因 TX 缓冲满而永久阻塞,
+     * WiFi 场景下不能依赖控制台输出. 缓冲满时丢弃而非阻塞.
+     * 注意: 本固件控制台走 ROM CDC (esp_usb_cdc_rom_console), usb_serial_jtag
+     * 驱动未安装, 首次探测失败后静默跳过, 避免每次调用刷错误日志. */
+    static bool s_comm_console_ready = true;
     if (!s_comm_console_ready) return;
     size_t sent = 0;
     while (sent < len) {
@@ -213,7 +212,7 @@ void comm_parse_cmd(const char *line) {
     /* 同时传递给 buddy_state 处理（权限、时间同步等）。
      * 注意: linebuf_feed 以 '\n' 作为行结束触发 apply_json, 而这里收到的
      * 是已去掉换行的完整行, 必须补一个 '\n' 才能让状态机真正解析,
-     * 否则 session/prompt/time 等数据只会堆积在行缓冲里, connected 恒为 false。 */
+     * 否则 session/time 等数据只会堆积在行缓冲里, connected 恒为 false。 */
     buddy_feed_usb_line(line, strlen(line));
     buddy_feed_usb_line("\n", 1);
     cJSON_Delete(root);

@@ -47,7 +47,7 @@ python tools/elara_host.py --host <设备IP> wifi --ssid "MyWiFi" --password "12
 python tools/elara_host.py --host <设备IP>
 ```
 
-> 说明：旧版 `{"type":"chat"}` / `{"type":"status"}` 命令不再入设备命令队列；设备侧主路径为 Buddy JSON（session/prompt/time 等）。详见 [上位机通信协议](docs/上位机通信协议.md)。
+> 说明：旧版 `{"type":"chat"}` / `{"type":"status"}` 命令不再入设备命令队列；设备侧主路径为会话 JSON（session/time 等）。详见 [上位机通信协议](docs/上位机通信协议.md)。
 
 ## 快速开始
 

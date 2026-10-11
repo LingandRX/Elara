@@ -120,12 +120,6 @@ static void wake(void) {
     }
 }
 
-/* 发送命令到上位机 */
-static void send_cmd(const char *json) {
-    uart_send_raw(json, strlen(json));
-    uart_send_raw("\n", 1);
-}
-
 /* 提示音（禁用，因为没有音频硬件） */
 static void beep(uint16_t freq, uint16_t dur) {
     (void)freq;
@@ -224,34 +218,6 @@ static void buddy_main_loop(void) {
         rt->active_state = rt->base_state;
     }
 
-    /* 6. 新审批提示到达 */
-    if (strcmp(session->prompt_id, rt->last_prompt_id) != 0) {
-        strncpy(rt->last_prompt_id, session->prompt_id, sizeof(rt->last_prompt_id) - 1);
-        rt->last_prompt_id[sizeof(rt->last_prompt_id) - 1] = '\0';
-        rt->response_sent = false;
-        if (session->prompt_id[0]) {
-            rt->prompt_arrived_ms = now_ms;
-            wake();
-            beep(1200, 80);
-            ui->display_mode = DISP_NORMAL;
-            ui->menu_open = false;
-            ui->settings_open = false;
-            ui->reset_open = false;
-            buddy_ui_hide_approval();
-            buddy_ui_show_approval(session->prompt_tool, session->prompt_hint);
-        } else if (!rt->response_sent) {
-            /* 审批被撤销 */
-            buddy_ui_hide_approval();
-        }
-    }
-
-    /* 7. 处理审批计时 */
-    bool in_prompt = session->prompt_id[0] && !rt->response_sent;
-    if (in_prompt && !buddy_ui_is_approval_visible()) {
-        /* 确保审批界面显示 */
-        buddy_ui_show_approval(session->prompt_tool, session->prompt_hint);
-    }
-
     /* 8. 推导 clocking 状态：仅在曾连接上位机但当前不在线时作为纯时钟；
      *     在线时完全由会话派生状态驱动（busy/done/idle/attention 均正常播放动画） */
     bool clocking = buddy_rtc_valid() &&
@@ -326,19 +292,13 @@ static void buddy_main_loop(void) {
                 buddy_ui_set_wifi(wset->wifi, wifi_manager_get_signal_level());
             }
 
-            /* 更新 PET 用量显示 (套餐 rolling/weekly/monthly) */
-            int ur = (session->usage_rolling == 0xFF) ? 0 : session->usage_rolling;
-            int uw = (session->usage_weekly == 0xFF) ? 0 : session->usage_weekly;
-            int um = (session->usage_monthly == 0xFF) ? 0 : session->usage_monthly;
-            buddy_ui_set_usage(ur, uw, um);
-
             lv_port_disp_unlock();
         }
     }
 
     /* 12. 自动休眠（简化：无 IMU，仅基于超时） */
     BuddySettings *settings = buddy_settings_get();
-    if (settings->auto_sleep && !rt->screen_off && !in_prompt) {
+    if (settings->auto_sleep && !rt->screen_off) {
         uint32_t idle_ms = now_ms - rt->last_interact_ms;
         uint32_t threshold = clocking ? CLOCK_OFF_MS_BAT : SCREEN_OFF_MS;
         if (idle_ms > threshold) {
@@ -351,7 +311,7 @@ static void buddy_main_loop(void) {
     uint32_t loop_ms;
     if (rt->screen_off) {
         loop_ms = 200;
-    } else if (rt->napping || in_prompt || ui->menu_open ||
+    } else if (rt->napping || ui->menu_open ||
                ui->settings_open || ui->reset_open || wifi_ui_is_visible() ||
                pet_ui_is_visible() ||
                (int32_t)(now_ms - rt->oneshot_until_ms) < 0) {
@@ -544,41 +504,6 @@ static void on_settings_action(BuddySettingItem item) {
     execute_settings_action(item);
 }
 
-/* 执行审批动作（批准/拒绝）
- * 由 BOOT 键（短按=批准 / 长按=拒绝）和触摸点击审批按钮共同触发 */
-static void execute_approval_action(bool approve) {
-    BuddyRuntime *rt = buddy_get_runtime();
-    if (!buddy_has_pending_prompt()) {
-        /* 无待审批项，仅关闭弹窗 */
-        buddy_ui_hide_approval();
-        return;
-    }
-    char cmd[96];
-    snprintf(cmd, sizeof(cmd),
-             "{\"cmd\":\"permission\",\"id\":\"%s\",\"decision\":\"%s\"}",
-             buddy_get_session_state()->prompt_id, approve ? "once" : "deny");
-    send_cmd(cmd);
-    rt->response_sent = true;
-    if (approve) {
-        uint32_t now_ms = esp_timer_get_time() / 1000;
-        uint32_t took_s = (now_ms - rt->prompt_arrived_ms) / 1000;
-        buddy_stats_on_approval(took_s);
-        beep(2400, 60);
-        if (took_s < 5) buddy_trigger_oneshot(PERSONA_HEART, 2000);
-    } else {
-        buddy_stats_on_denial();
-        beep(1000, 80);
-        buddy_trigger_oneshot(PERSONA_DIZZY, 2000);
-    }
-    buddy_ui_hide_approval();
-}
-
-/* 触摸点击审批按钮回调（运行于 LVGL 锁内） */
-static void on_approval_action(bool approve) {
-    /* LVGL 事件回调已持有 LVGL 锁，直接执行动作 */
-    execute_approval_action(approve);
-}
-
 static void process_boot_key(void) {
     BuddyUIState *ui = buddy_get_ui_state();
     BuddyRuntime *rt = buddy_get_runtime();
@@ -621,12 +546,7 @@ static void process_boot_key(void) {
         } else if (press_dur >= 600) {
             /* 长按 */
             beep(800, 60);
-            if (buddy_has_pending_prompt()) {
-                if (lv_port_disp_lock(-1)) {
-                    execute_approval_action(false);
-                    lv_port_disp_unlock();
-                }
-            } else if (ui->reset_open) {
+            if (ui->reset_open) {
                 ui->reset_open = false;
             } else if (ui->settings_open) {
                 if (lv_port_disp_lock(-1)) {
@@ -651,12 +571,7 @@ static void process_boot_key(void) {
         } else {
             /* 短按 */
             beep(1800, 30);
-            if (buddy_has_pending_prompt()) {
-                if (lv_port_disp_lock(-1)) {
-                    execute_approval_action(true);
-                    lv_port_disp_unlock();
-                }
-            } else if (ui->reset_open) {
+            if (ui->reset_open) {
                 ui->reset_sel = (ui->reset_sel + 1) % 3;
                 ui->reset_confirm_idx = 0xFF;
             } else if (ui->settings_open) {
@@ -695,12 +610,6 @@ static void on_settings_closed(void) {
     ui->settings_open = false;
 }
 
-static void on_approval_closed(void) {
-    BuddyRuntime *rt = buddy_get_runtime();
-    rt->response_sent = true;
-    buddy_stats_on_denial();
-}
-
 void app_main(void) {
     ESP_LOGI(TAG, "Elara Buddy Starting...");
 
@@ -725,10 +634,9 @@ void app_main(void) {
 
     /* 3. 初始化 Buddy UI */
     buddy_ui_init();
-    buddy_ui_set_overlay_close_cb(on_menu_closed, on_settings_closed, on_approval_closed);
+    buddy_ui_set_overlay_close_cb(on_menu_closed, on_settings_closed);
     buddy_ui_set_menu_action_cb(on_menu_action);
     buddy_ui_set_settings_action_cb(on_settings_action);
-    buddy_ui_set_approval_action_cb(on_approval_action);
     buddy_ui_show(true);
 
     /* 4. 初始化存储 */
