@@ -28,8 +28,6 @@
 - `main/input/lvgl_touch.c` - LVGL 触摸输入适配层（含滑动检测）
 - `main/ui/buddy/buddy_ui.c` - Buddy 主界面 UI（HUD/时钟/菜单/设置）
 - `main/ui/buddy/buddy_anim.c` - Buddy 角色动画（ASCII/GIF 物种）
-- `main/ui/pet_ui.c` - Petdex 动画页面
-- `main/ui/pet_anim.c` - 宠物动画精灵图加载
 - `main/ui/wifi_ui.c` - WiFi 管理页面（扫描列表/连接状态/密码输入，经 wifi_manager API 操作）
 - `main/ui/lvgl_widgets.c` - LVGL 自定义控件
 - `main/buddy/buddy_state.c` - Buddy 核心状态机（7 种 Persona 状态、会话数据）
@@ -50,7 +48,7 @@
 **任务结构**:
 - `lvgl_handler` - LVGL 渲染任务（基于 lv_task_handler 返回间隔动态调度）
 - `uart_rx` - UART 接收任务
-- `cmd_proc` - 命令处理任务（Petdex 等命令分发）
+- `cmd_proc` - 命令处理任务（消费命令队列；图片播放已移除，暂无分发项）
 - 主循环直接内联在 `app_main` 中（Buddy 状态机 + BOOT 键轮询，LTPO-lite 动态帧率）
 
 **硬件引脚**:
@@ -142,7 +140,7 @@ idf.py -p /dev/ttyACM0 flash monitor
 - FreeRTOS 节拍率: 1000Hz
 - CPU 频率: 160MHz
 - LCD 使用 ESP-IDF 官方 esp_lcd_panel_st7789 驱动，通过 esp_lcd API 操作
-- UART/TCP 协议：`petdex`/`upload`/`wifi` 明文命令仍有效；遗留 `status`/`chat`/`progress` **不再入命令队列**（Buddy JSON 由 `buddy_feed_usb_line` 处理）
+- UART/TCP 协议：`upload`/`wifi` 明文命令仍有效；`petdex`（图片播放）已移除、`status`/`chat`/`progress` 遗留命令**不再入命令队列**（Buddy JSON 由 `buddy_feed_usb_line` 处理）
 - LVGL 版本: 8.4，通过 ESP-IDF 组件管理器集成
 - LVGL 配置真相源是 `sdkconfig`（Kconfig），`components/lv_conf.h` **不参与编译**
   （`CONFIG_LV_CONF_SKIP=y`，且 LVGL 组件看不到该路径）。界面默认字体用
@@ -153,7 +151,7 @@ idf.py -p /dev/ttyACM0 flash monitor
 - 触摸坐标: CST816T 直接输出屏幕像素坐标 (0-169, 0-319)，无需缩放映射；触摸滑动检测带防抖（点击 2 次、滑动 8 次无触点判定松开）
 - 背光控制: LEDC PWM，低电平亮（duty=0 最亮，duty=255 最暗），由 `backlight_manager` 模块统一管理，支持 0-255 亮度调节、渐变动效；自动休眠由主循环统一管理（backlight_manager 的自动休眠已禁用）
 - 背光文档: `docs/Backlight_Manager.md`
-- 初始化顺序: NVS → LCD → LVGL → 触摸 → UI → 存储 → Petdex → Buddy 状态/统计 → 动画 → 电池 → 通信任务 → WiFi/TCP → 背光
+- 初始化顺序: NVS → LCD → LVGL → 触摸 → UI → 存储 → Buddy 状态/统计 → 动画 → 电池 → 通信任务 → WiFi/TCP → 背光
 - WiFi 开关受 `BuddySettings.wifi`（NVS `s_wifi`）控制；TCP Server 始终监听 8080 端口
 - 弹窗交互: 主菜单/设置弹窗的触摸点击动作统一由 `main.c` 的 `execute_menu_action` / `execute_settings_action` 处理（BOOT 键确认 + 触摸点击共享同一逻辑）
 - 中文字体: 由 `tools/generate_font.py` 提取源码字符集后用 `npx lv_font_conv` 生成（`main/font/lv_font_sc_{12,14,20}.c`）。**新增中文字面量后必须重跑 `make font`**，否则新字显示为方块。

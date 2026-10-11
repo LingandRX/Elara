@@ -6,7 +6,6 @@
 #include <errno.h>
 #include "wifi_manager.h"
 #include "tcp_server.h"
-#include "ui/pet_ui.h"
 #include "display/lv_port_disp.h"
 #include "buddy/buddy_state.h"
 #ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
@@ -80,13 +79,6 @@ static void comm_finish_upload(void) {
     /* 文件已落盘, 先通知 TCP 立即回传 finished (避免被后续刷新/打印阻塞拖住) */
     if (s_upload_done_cb) s_upload_done_cb();
 
-    /* 刷新 UI 缓存 (加超时, 拿不到锁则跳过刷新, 不能阻塞上传流程) */
-    if (lv_port_disp_lock(500)) {
-        pet_ui_refresh();
-        pet_ui_show(true);  /* 上传完成后直接展示新精灵图 */
-        lv_port_disp_unlock();
-    }
-
     uart_send_event("upload", "finished");
 }
 
@@ -105,12 +97,12 @@ bool comm_start_upload(const char *path, uint32_t size) {
             /* 绝对路径：直接使用 */
             strncpy(target_path, path, sizeof(target_path) - 1);
         } else {
-            /* 相对路径：自动补全宠物动画根目录 */
-            snprintf(target_path, sizeof(target_path), "/spiffs/sprites/%s", path);
+            /* 相对路径：自动补全到 /spiffs/ 根目录 */
+            snprintf(target_path, sizeof(target_path), "/spiffs/%s", path);
         }
     } else {
-        /* 默认路径：精灵图 */
-        strncpy(target_path, "/spiffs/sprite.png", sizeof(target_path) - 1);
+        /* 默认路径：通用上传文件（图片播放已移除） */
+        strncpy(target_path, "/spiffs/upload.bin", sizeof(target_path) - 1);
     }
 
     s_upload_file = fopen(target_path, "wb");
@@ -184,7 +176,6 @@ void comm_parse_cmd(const char *line) {
 
     cJSON *type = cJSON_GetObjectItem(root, "type");
     if (cJSON_IsString(type)) {
-        UartCmd cmd = {0};
         if (strcmp(type->valuestring, "status") == 0) {
             /* 遗留 status 不再入命令队列；Buddy JSON 仍由下方 buddy_feed_usb_line 处理 */
             ESP_LOGI(TAG, "legacy status ignored (not enqueued); use Buddy JSON");
@@ -201,12 +192,8 @@ void comm_parse_cmd(const char *line) {
                 comm_start_upload(cJSON_IsString(path) ? path->valuestring : NULL, size->valueint);
             }
         } else if (strcmp(type->valuestring, "petdex") == 0) {
-            cJSON *state = cJSON_GetObjectItem(root, "state");
-            if (cJSON_IsString(state)) {
-                cmd.type = CMD_PETDEX;
-                strncpy(cmd.state, state->valuestring, sizeof(cmd.state) - 1);
-                xQueueSend(cmdQueue, &cmd, 0);
-            }
+            /* 图片播放已移除：petdex 命令不再处理 */
+            ESP_LOGI(TAG, "petdex ignored (image playback removed)");
         }
     }
     /* 同时传递给 buddy_state 处理（权限、时间同步等）。

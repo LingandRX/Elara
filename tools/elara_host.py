@@ -15,7 +15,6 @@ Elara 上位机客户端
     python elara_host.py --host 192.168.2.155 chat --role ai --text "你好"
     python elara_host.py --host 192.168.2.155 clear
     python elara_host.py --host 192.168.2.155 progress --value 50
-    python elara_host.py --host 192.168.2.155 petdex --state "run right"
     python elara_host.py --host 192.168.2.155 name --value "Pixel"
     python elara_host.py --host 192.168.2.155 owner --value "Alex"
     python elara_host.py --host 192.168.2.155 snap
@@ -187,10 +186,6 @@ def cmd_clear():
 
 def cmd_progress(value: int):
     return {"type": "progress", "value": max(0, min(100, value))}
-
-
-def cmd_petdex(state: str):
-    return {"type": "petdex", "state": state}
 
 
 def cmd_wifi(ssid: str, password: str):
@@ -429,12 +424,11 @@ def interactive(transport: Transport):
   chat <role> <text>    发送消息 (role: user/ai/system)
   clear                 清空聊天记录
   progress <0-100>      设置进度条
-  petdex <state>        切换 Petdex 动画
   wifi <ssid> <pass>    配置 Wi-Fi (纯文本)
   name <name>           设置宠物名
   owner <name>          设置主人名
   snap                  获取状态快照
-  upload <file> [path]  上传精灵图
+  upload <file> [path]  上传文件到设备
   upload-sheet <file> [--name NAME]  批量切图并上传整套动作 (WebP/PNG)
   xfer <char> <file>    角色包文件传输
   help / exit           帮助 / 退出
@@ -464,8 +458,6 @@ def interactive(transport: Transport):
                 send_json(transport, cmd_clear())
             elif cmd == "progress" and len(parts) >= 2:
                 send_json(transport, cmd_progress(int(parts[1])))
-            elif cmd == "petdex" and len(parts) >= 2:
-                send_json(transport, cmd_petdex(" ".join(parts[1:])))
             elif cmd == "wifi" and len(parts) >= 3:
                 send_json(transport, cmd_wifi(parts[1], parts[2]))
             elif cmd == "name" and len(parts) >= 2:
@@ -514,7 +506,6 @@ def main():
                      {"flags": ["--seq"], "opts": {"type": int, "default": 0}}])
     add_cmd("clear")
     add_cmd("progress", [{"flags": ["--value"], "opts": {"type": int, "required": True}}])
-    add_cmd("petdex", [{"flags": ["--state"], "opts": {"required": True}}])
     add_cmd("wifi", [{"flags": ["--ssid"], "opts": {"required": True}},
                      {"flags": ["--password"], "opts": {"required": True}}])
     add_cmd("name", [{"flags": ["--value"], "opts": {"required": True}}])
@@ -562,8 +553,6 @@ def main():
             send_json(transport, cmd_clear(), label="clear")
         elif args.command == "progress":
             send_json(transport, cmd_progress(args.value), label="progress")
-        elif args.command == "petdex":
-            send_json(transport, cmd_petdex(args.state), label="petdex")
         elif args.command == "wifi":
             send_json(transport, cmd_wifi(args.ssid, args.password), label="wifi")
         elif args.command == "name":

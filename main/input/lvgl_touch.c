@@ -24,7 +24,10 @@ static bool is_pressed = false;
 /* CST816T 滑动时触点数寄存器会瞬时丢点, 需防抖保持一次连续按压:
  * 点击用短防抖, 有位移的滑动用长防抖桥接丢点. */
 #define TAP_DEBOUNCE     2   /* 点击: 连续 2 次无触点即松开 */
-#define SWIPE_DEBOUNCE   8   /* 滑动: 连续 8 次无触点(~260ms)才松开 */
+/* 滑动: 连续 3 次无触点才判定松开。
+ * 原值 8 在实测 ~100ms/次 的采样率下要 ~800ms 才触发滑动，手感严重滞后；
+ * 降到 3 后约 300ms，同时仍能桥接 CST816T 滑动丢点。 */
+#define SWIPE_DEBOUNCE   3
 #define SWIPE_THRESHOLD  25  /* 位移超过该值判定为滑动 */
 
 static uint8_t release_streak = 0;

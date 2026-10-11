@@ -21,7 +21,9 @@
 #define LCD_PIN_BL          GPIO_NUM_14
 
 /* SPI 配置 */
-#define LCD_SPI_FREQ_HZ     (20 * 1000 * 1000)  // 20MHz
+/* ST7789 数据手册上限约 62.5MHz；实测 40MHz 稳定，可显著缩短整屏刷写占用。
+ * 若出现花屏/闪烁，回退到 20MHz。 */
+#define LCD_SPI_FREQ_HZ     (40 * 1000 * 1000)  // 40MHz
 #define LCD_SPI_QUEUE_SIZE  10
 
 /* LVGL 缓冲配置 */

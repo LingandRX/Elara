@@ -9,8 +9,6 @@
 #include "buddy_ui.h"
 #include "buddy_anim.h"
 #include "buddy_drawer.h"
-#include "sprite_pet.h"
-#include "pet_ui.h"
 #include "wifi_ui.h"
 #include "buddy/buddy_state.h"
 #include "buddy/buddy_stats.h"
@@ -35,14 +33,18 @@ static lv_obj_t *s_container = NULL;
 /* NORMAL 模式 */
 static lv_obj_t *s_normal_page = NULL;
 static lv_obj_t *s_anim_canvas = NULL;
-static SpritePet *s_sprite_pet = NULL;   /* 动画 pet (精灵图) */
-static bool s_pet_animated = false;      /* true=动画 pet, false=ASCII pet */
 static lv_obj_t *s_clock_label = NULL;
 static lv_obj_t *s_wifi_label = NULL;
 static int s_last_wifi_level = -1;   /* 诊断：上次设置的信号等级 */
 static lv_obj_t *s_battery_label = NULL;
 static lv_obj_t *s_persona_label = NULL;
 static lv_obj_t *s_mood_dots[3] = {NULL, NULL, NULL};
+
+/* 渲染去重缓存：主循环每帧都会调用 set_persona / set_wifi，
+ * 若不做变化判断会每帧触发 label 重排+重绘，拖慢 lv_task_handler */
+static int  s_last_persona   = -1;
+static int  s_last_wifi_en   = -1;
+static int  s_last_wifi_lvl  = -1;
 
 /* INFO 模式 */
 static lv_obj_t *s_info_page = NULL;
@@ -97,7 +99,6 @@ static BuddySettingActionCb s_settings_action_cb = NULL;
 
 /* ============ 菜单文本 ============ */
 static const char *s_menu_texts[BUDDY_MENU_MAX] = {
-    LV_SYMBOL_IMAGE   " 宠物图鉴",
     LV_SYMBOL_WIFI    " 网络",
     LV_SYMBOL_SETTINGS" 设置",
     LV_SYMBOL_HOME    " 关于",
@@ -108,7 +109,6 @@ static const char *s_menu_texts[BUDDY_MENU_MAX] = {
 static const char *s_setting_texts[BUDDY_SET_MAX] = {
     LV_SYMBOL_IMAGE     " 亮度",
     LV_SYMBOL_EYE_OPEN  " 信息面板",
-    LV_SYMBOL_VIDEO     " 宠物模式",
     LV_SYMBOL_REFRESH   " 旋转",
     LV_SYMBOL_WIFI      " Wi-Fi",
     LV_SYMBOL_VOLUME_MAX" 声音",
@@ -163,9 +163,6 @@ static void create_normal_page(void) {
     obj_set_pad_all(s_anim_canvas, 0);
     lv_obj_align(s_anim_canvas, LV_ALIGN_TOP_LEFT, 0, 0);
     lv_obj_clear_flag(s_anim_canvas, LV_OBJ_FLAG_SCROLLABLE);
-
-    /* 动画 pet (精灵图) 视口：默认隐藏，由宠物展示模式设置切换 */
-    s_sprite_pet = sprite_pet_create(s_normal_page, SCREEN_W, ANIM_AREA_H);
 
     /* 时钟标签 */
     s_clock_label = lv_label_create(s_normal_page);
@@ -329,12 +326,6 @@ static void overlay_click_close_cb(lv_event_t *e) {
 
 /* 驱动层滑动检测回调 (绕过 LVGL 手势系统, 见 lvgl_touch.c) */
 void buddy_ui_handle_swipe(lv_dir_t dir) {
-    /* Petdex 页面：左右切换动画状态 */
-    if (pet_ui_is_visible()) {
-        if (dir == LV_DIR_LEFT)  pet_ui_next_state();
-        if (dir == LV_DIR_RIGHT) pet_ui_prev_state();
-        return;
-    }
     /* WiFi 页面：其列表自身纵向滚动，忽略全局手势 */
     if (wifi_ui_is_visible()) return;
     /* 菜单/设置覆盖层打开时：忽略手势，避免叠加抽屉 */
@@ -398,7 +389,7 @@ static void create_menu_overlay(void) {
 
     /* 面板 */
     s_menu_panel = lv_obj_create(s_menu_overlay);
-    lv_obj_set_size(s_menu_panel, 140, 228);
+    lv_obj_set_size(s_menu_panel, 140, 132);   /* 4 项：标题 + 4×24 + 边距 */
     lv_obj_set_style_bg_color(s_menu_panel, COLOR_BG, 0);
     lv_obj_set_style_border_width(s_menu_panel, 1, 0);
     lv_obj_set_style_border_color(s_menu_panel, COLOR_TEXT_DIM, 0);
@@ -473,7 +464,7 @@ static void create_settings_overlay(void) {
     lv_obj_add_event_cb(s_settings_overlay, overlay_click_close_cb, LV_EVENT_CLICKED, s_settings_overlay);
 
     s_settings_panel = lv_obj_create(s_settings_overlay);
-    lv_obj_set_size(s_settings_panel, 154, 300);
+    lv_obj_set_size(s_settings_panel, 154, 226);   /* 8 项：标题 + 8×24 + 边距 */
     lv_obj_set_style_bg_color(s_settings_panel, COLOR_BG, 0);
     lv_obj_set_style_border_width(s_settings_panel, 1, 0);
     lv_obj_set_style_border_color(s_settings_panel, COLOR_TEXT_DIM, 0);
@@ -518,7 +509,6 @@ static void create_settings_overlay(void) {
     /* 初始化设置值显示 */
     buddy_ui_settings_set_brightness(s_brightness_pct);
     buddy_ui_settings_set_toggle(BUDDY_SET_INFO_PANEL, s_set_info_panel);
-    buddy_ui_settings_set_pet_mode(false);
     buddy_ui_settings_set_toggle(BUDDY_SET_ROTATE, s_set_rotate);
     buddy_ui_settings_set_toggle(BUDDY_SET_WIFI, s_set_wifi);
     buddy_ui_settings_set_toggle(BUDDY_SET_SOUND, s_set_sound);
@@ -618,6 +608,10 @@ BuddyMode buddy_ui_get_mode(void) {
 /* ============ NORMAL 页面 ============ */
 
 void buddy_ui_set_persona(uint8_t persona_state) {
+    /* 状态未变化时直接返回，避免每帧 set_text / set_style 触发重绘 */
+    if ((int)persona_state == s_last_persona) return;
+    s_last_persona = (int)persona_state;
+
     if (s_persona_label) {
         lv_label_set_text(s_persona_label, buddy_persona_label((PersonaState)persona_state));
         lv_obj_set_style_text_color(s_persona_label,
@@ -712,22 +706,12 @@ void buddy_ui_settings_set_toggle(BuddySettingItem item, bool on) {
     if (s_setting_vals[item]) {
         if (item == BUDDY_SET_BRIGHTNESS) {
             /* 亮度由单独函数处理 */
-        } else if (item == BUDDY_SET_PET_MODE) {
-            /* 宠物展示模式由 buddy_ui_settings_set_pet_mode() 显示 */
         } else if (item == BUDDY_SET_RESET || item == BUDDY_SET_BACK) {
             lv_label_set_text(s_setting_vals[item], "");
         } else {
             lv_label_set_text(s_setting_vals[item], on ? "ON" : "OFF");
             lv_obj_set_style_text_color(s_setting_vals[item], on ? COLOR_GREEN : COLOR_RED, 0);
         }
-    }
-}
-
-void buddy_ui_settings_set_pet_mode(bool animated) {
-    if (s_setting_vals[BUDDY_SET_PET_MODE]) {
-        lv_label_set_text(s_setting_vals[BUDDY_SET_PET_MODE], animated ? "Anim" : "ASCII");
-        lv_obj_set_style_text_color(s_setting_vals[BUDDY_SET_PET_MODE],
-                                    animated ? COLOR_GREEN : COLOR_TEXT_DIM, 0);
     }
 }
 
@@ -743,10 +727,13 @@ void buddy_ui_settings_set_brightness(int pct) {
 /* ============ 时钟 ============ */
 
 void buddy_ui_set_clock(int hour, int minute, int second) {
+    /* 只在「显示的分钟」变化时才刷新 label：主循环每 100ms 调用一次，
+     * 不做判断会每帧重排/重绘时钟标签 */
+    bool changed = (hour != s_clock_h) || (minute != s_clock_m);
     s_clock_h = hour;
     s_clock_m = minute;
     s_clock_s = second;
-    if (s_clock_label) {
+    if (s_clock_label && changed) {
         lv_label_set_text_fmt(s_clock_label, "%02d:%02d", hour, minute);
     }
 }
@@ -772,6 +759,10 @@ void buddy_ui_set_battery(int percentage, bool charging) {
  */
 void buddy_ui_set_wifi(bool enabled, int signal_level) {
     if (!s_wifi_label) return;
+    /* 开关与信号等级都未变化时直接返回（主循环每帧调用） */
+    if ((int)enabled == s_last_wifi_en && signal_level == s_last_wifi_lvl) return;
+    s_last_wifi_en  = (int)enabled;
+    s_last_wifi_lvl = signal_level;
     if (!enabled) {
         lv_obj_add_flag(s_wifi_label, LV_OBJ_FLAG_HIDDEN);
         return;
@@ -792,66 +783,12 @@ void buddy_ui_set_wifi(bool enabled, int signal_level) {
     }
 }
 
-/* ============ 宠物展示模式 ============ */
-
-/* Persona 状态 → 动画 pet 状态映射 */
-static PetAnimState persona_to_pet_state(uint8_t p) {
-    switch (p) {
-    case PERSONA_SLEEP:      return PET_ANIM_WAITING;
-    case PERSONA_BUSY:       return PET_ANIM_RUNNING;
-    case PERSONA_ATTENTION:  return PET_ANIM_WAVING;
-    case PERSONA_CELEBRATE:  return PET_ANIM_JUMPING;
-    case PERSONA_DIZZY:      return PET_ANIM_FAILED;
-    case PERSONA_HEART:      return PET_ANIM_WAVING;
-    case PERSONA_IDLE:
-    default:                 return PET_ANIM_IDLE;
-    }
-}
-
-void buddy_ui_set_pet_mode(bool animated) {
-    s_pet_animated = animated;
-    if (!s_sprite_pet) return;
-
-    if (animated) {
-        /* 存储可能刚挂载/更新, 先刷新资源; 无资源时回退 ASCII */
-        sprite_pet_reload(s_sprite_pet);
-        if (!sprite_pet_ready(s_sprite_pet)) {
-            ESP_LOGW(TAG, "Sprite pet not available, fallback to ASCII");
-            s_pet_animated = false;
-        }
-    }
-
-    sprite_pet_set_visible(s_sprite_pet, s_pet_animated);
-    if (s_anim_canvas) {
-        if (s_pet_animated) {
-            lv_obj_add_flag(s_anim_canvas, LV_OBJ_FLAG_HIDDEN);
-        } else {
-            lv_obj_clear_flag(s_anim_canvas, LV_OBJ_FLAG_HIDDEN);
-        }
-    }
-}
-
-bool buddy_ui_is_pet_animated(void) {
-    return s_pet_animated;
-}
-
-void buddy_ui_anim_set_persona(uint8_t persona_state) {
-    if (!s_sprite_pet || !s_pet_animated) return;
-    sprite_pet_set_state(s_sprite_pet, persona_to_pet_state(persona_state));
-}
-
 /* ============ 动画 tick ============ */
 
 void buddy_ui_anim_tick(uint32_t tick) {
-    /* 动画 pet (精灵图)：推进动画帧 */
-    if (s_mode == BUDDY_MODE_NORMAL && s_pet_animated && s_sprite_pet) {
-        sprite_pet_update(s_sprite_pet);
-    }
-
-    /* 触发 buddy 角色动画 (ASCII pet; 动画 pet 模式下隐藏) */
-    if (s_mode == BUDDY_MODE_NORMAL && s_anim_canvas && !s_pet_animated) {
-        /* 使用 buddy_anim 渲染到动画区域 */
+    (void)tick;
+    /* 已移除精灵图/图片播放，主页统一使用 ASCII 角色动画 */
+    if (s_mode == BUDDY_MODE_NORMAL && s_anim_canvas) {
         buddy_anim_render_to(s_anim_canvas, SCREEN_W / 2, ANIM_AREA_H / 2);
     }
-
 }

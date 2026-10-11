@@ -21,6 +21,13 @@ static bool s_peek = false;
 static lv_coord_t s_cx = 0;
 static lv_coord_t s_cy = 0;
 
+/* 渲染去重缓存：避免每帧重复 set_text / set_style / align 触发无谓重绘 */
+static const char *s_last_text  = NULL;
+static lv_color_t  s_last_color = {0};
+static lv_coord_t  s_last_off_y = 0;
+static bool        s_last_peek  = false;
+static bool        s_cache_valid = false;
+
 /* ==========================================================================
  * 辅助函数
  * ========================================================================== */
@@ -57,7 +64,9 @@ static lv_obj_t *buddy_ensure_label(lv_obj_t *parent)
     }
     s_buddy_label = lv_label_create(parent);
     lv_obj_set_style_text_align(s_buddy_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(s_buddy_label, FONT_MD, 0);   /* 字体只需设一次 */
     s_current_parent = parent;
+    s_cache_valid = false;                                   /* 新对象：缓存作废 */
     return s_buddy_label;
 }
 
@@ -69,23 +78,42 @@ static void buddy_draw_ascii(lv_obj_t *canvas, lv_coord_t cx, lv_coord_t cy,
                              uint32_t tick, uint8_t state)
 {
     lv_obj_t *label = buddy_ensure_label(canvas);
-    lv_label_set_text(label, text);
-    lv_obj_set_style_text_color(label, color, 0);
-    lv_obj_set_style_text_font(label, FONT_MD, 0);
 
-    lv_coord_t off_y = buddy_anim_offset(tick, state);
-    /* cx/cy 是角色中心在画布内的目标坐标；LV_ALIGN_CENTER 的偏移相对父容器中心，需换算 */
-    lv_obj_align(label, LV_ALIGN_CENTER,
-                 cx - lv_obj_get_width(canvas) / 2,
-                 cy - lv_obj_get_height(canvas) / 2 + off_y);
-
-    if (s_peek) {
-        lv_obj_set_style_transform_zoom(label, 512, 0);
-        lv_obj_set_style_transform_pivot_x(label, LV_PCT(50), 0);
-        lv_obj_set_style_transform_pivot_y(label, LV_PCT(50), 0);
-    } else {
-        lv_obj_set_style_transform_zoom(label, 256, 0);
+    /* 文本：仅在指针变化时更新（ASCII 字库是静态字符串，指针可直接比较） */
+    if (!s_cache_valid || text != s_last_text) {
+        lv_label_set_text(label, text);
+        s_last_text = text;
     }
+
+    /* 颜色：仅在变化时更新 */
+    if (!s_cache_valid || color.full != s_last_color.full) {
+        lv_obj_set_style_text_color(label, color, 0);
+        s_last_color = color;
+    }
+
+    /* 位置：仅在纵向动画偏移变化时重新对齐，避免每帧 invalidate 整块区域 */
+    lv_coord_t off_y = buddy_anim_offset(tick, state);
+    if (!s_cache_valid || off_y != s_last_off_y) {
+        /* cx/cy 是角色中心在画布内的目标坐标；LV_ALIGN_CENTER 的偏移相对父容器中心，需换算 */
+        lv_obj_align(label, LV_ALIGN_CENTER,
+                     cx - lv_obj_get_width(canvas) / 2,
+                     cy - lv_obj_get_height(canvas) / 2 + off_y);
+        s_last_off_y = off_y;
+    }
+
+    /* 缩放：仅在 peek 模式切换时更新（transform 会强制走图层重绘，代价高） */
+    if (!s_cache_valid || s_peek != s_last_peek) {
+        if (s_peek) {
+            lv_obj_set_style_transform_zoom(label, 512, 0);
+            lv_obj_set_style_transform_pivot_x(label, LV_PCT(50), 0);
+            lv_obj_set_style_transform_pivot_y(label, LV_PCT(50), 0);
+        } else {
+            lv_obj_set_style_transform_zoom(label, 256, 0);
+        }
+        s_last_peek = s_peek;
+    }
+
+    s_cache_valid = true;
 }
 
 /* ==========================================================================
@@ -918,6 +946,7 @@ void buddy_anim_invalidate(void)
         s_buddy_label = NULL;
         s_current_parent = NULL;
     }
+    s_cache_valid = false;
 }
 
 void buddy_anim_set_species_by_name(const char *name)

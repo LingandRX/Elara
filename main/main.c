@@ -25,7 +25,6 @@
 #include "ui/buddy/buddy_ui.h"
 #include "ui/buddy/buddy_drawer.h"
 #include "ui/buddy/buddy_anim.h"
-#include "ui/pet_ui.h"
 #include "ui/wifi_ui.h"
 #include "comm/uart_comm.h"
 #include "comm/tcp_server.h"
@@ -53,7 +52,6 @@ static uint32_t s_tick = 0;
 #define PLAYFUL_MS          (3UL * 60UL * 1000UL)
 #define SCREEN_OFF_MS       (30UL * 1000UL)
 #define CLOCK_OFF_MS_BAT    (5UL * 60UL * 1000UL)
-#define SPECIES_GIF         0xFF
 
 /* SPI 颜色传输完成回调 */
 static bool on_color_trans_done(esp_lcd_panel_io_handle_t panel_io,
@@ -162,15 +160,9 @@ static void cmd_process_task(void *pvParam) {
     UartCmd cmd;
     while (1) {
         if (xQueueReceive(cmdQueue, &cmd, pdMS_TO_TICKS(100)) == pdTRUE) {
-            /* 仅处理 PETDEX。CMD_STATUS/CMD_CHAT/CMD_PROGRESS 故意不处理：
-             * 遗留类型已在 comm_parse_cmd 中不再入队，改走 Buddy JSON。 */
-            if (cmd.type == CMD_PETDEX) {
-                if (lv_port_disp_lock(-1)) {
-                    pet_ui_set_state_by_name(cmd.state);
-                    pet_ui_show(true);
-                    lv_port_disp_unlock();
-                }
-            }
+            /* 图片播放（Petdex）已移除：不再有需要分发的遗留命令类型。
+             * 保留队列消费，避免发送方阻塞。 */
+            (void)cmd;
         }
     }
 }
@@ -270,15 +262,12 @@ static void buddy_main_loop(void) {
     }
 
     /* 12. 渲染更新（仅在主界面显示时才进行 Buddy 动画渲染，避免全屏子页面打开时 CPU 争抢） */
-    if (!rt->napping && !rt->screen_off && !pet_ui_is_visible() && !wifi_ui_is_visible()) {
+    if (!rt->napping && !rt->screen_off && !wifi_ui_is_visible()) {
         if (lv_port_disp_lock(50)) {
             /* 更新动画 pet（精灵图）状态 */
-            buddy_ui_anim_set_persona(rt->active_state);
             buddy_ui_set_persona((uint8_t)rt->active_state);
-            /* ASCII pet 动画：动画 pet 模式下隐藏, 跳过绘制 */
-            if (!buddy_ui_is_pet_animated()) {
-                buddy_anim_tick(rt->active_state, s_tick);
-            }
+            /* ASCII 角色动画（图片播放已移除） */
+            buddy_anim_tick(rt->active_state, s_tick);
             buddy_ui_anim_tick(s_tick);
 
             /* 更新顶部 WiFi 连接标识（含信号强弱，需在 LVGL 锁内操作 UI） */
@@ -308,7 +297,6 @@ static void buddy_main_loop(void) {
         loop_ms = 200;
     } else if (rt->napping || ui->menu_open ||
                ui->settings_open || ui->reset_open || wifi_ui_is_visible() ||
-               pet_ui_is_visible() ||
                (int32_t)(now_ms - rt->oneshot_until_ms) < 0) {
         loop_ms = 16;
     } else {
@@ -337,9 +325,6 @@ static void execute_menu_action(BuddyMenuItem item) {
     buddy_ui_show_menu(false);
 
     switch (item) {
-    case BUDDY_MENU_PETDEX:
-        pet_ui_show(true);
-        break;
     case BUDDY_MENU_WIFI:
         wifi_ui_show(true);
         break;
@@ -395,17 +380,6 @@ static void execute_settings_action(BuddySettingItem item) {
         set->hud = !set->hud;                 /* 复用 hud 字段作为信息面板开关 */
         buddy_ui_settings_set_toggle(BUDDY_SET_INFO_PANEL, set->hud);
         buddy_settings_save();
-        break;
-    }
-    case BUDDY_SET_PET_MODE: {
-        BuddySettings *set = buddy_settings_get();
-        set->pet_mode = !set->pet_mode;
-        buddy_settings_save();
-        ui->buddy_mode = !set->pet_mode;
-        buddy_ui_settings_set_pet_mode(set->pet_mode);
-        buddy_ui_set_pet_mode(set->pet_mode);
-        buddy_anim_invalidate();
-        beep(1800, 30);
         break;
     }
     case BUDDY_SET_ROTATE: {
@@ -485,15 +459,6 @@ static void process_boot_key(void) {
         /* 释放 */
         uint32_t press_dur = now_ms - bk_press_start_ms;
         ESP_LOGI(TAG, "BOOT key released, dur=%lu ms", press_dur);
-
-        /* Petdex 页面: 按 BOOT 返回主界面 */
-        if (pet_ui_is_visible()) {
-            if (lv_port_disp_lock(-1)) {
-                pet_ui_show(false);
-                lv_port_disp_unlock();
-            }
-            return;
-        }
 
         /* WiFi 管理页面: 按 BOOT 返回主界面 */
         if (wifi_ui_is_visible()) {
@@ -629,10 +594,6 @@ void app_main(void) {
 
     /* 4. 初始化存储 */
     storage_init();
-    storage_init_pet_dirs();
-
-    /* 4.5 初始化 Petdex 动画页面 (需在 storage_init 之后) */
-    pet_ui_init();
 
     /* 4.6 初始化 WiFi 管理页面 (页面创建不依赖 wifi_manager，可先创建) */
     wifi_ui_init();
@@ -671,10 +632,6 @@ void app_main(void) {
     buddy_ui_settings_set_toggle(BUDDY_SET_SOUND, set->sound);
     buddy_ui_settings_set_toggle(BUDDY_SET_AUTO_SLEEP, set->auto_sleep);
 
-    /* 8.3 宠物展示模式（ASCII pet / 动画 pet）同步到主页与设置显示 */
-    buddy_ui_settings_set_pet_mode(set->pet_mode);
-    buddy_ui_set_pet_mode(set->pet_mode);
-
     /* 8.5 启动 WiFi 与 TCP Server（上位机网络通信，根据设置决定是否启用 WiFi） */
     wifi_manager_init();
     if (set->wifi) {
@@ -690,22 +647,17 @@ void app_main(void) {
     backlight_enable_auto_sleep(false, 0, 0);  /* 禁用，避免与 buddy_main_task 冲突 */
     backlight_set_on(true);
 
-    /* 11. 加载物种设置 */
+    /* 11. 加载物种设置（图片播放已移除，始终使用 ASCII 角色） */
     BuddyUIState *ui = buddy_get_ui_state();
     uint8_t species_idx = species_idx_load();
-    ui->buddy_mode = true;
-    if (species_idx == SPECIES_GIF) {
-        /* 检查是否有 GIF 角色 */
-        ui->buddy_mode = false;
-    } else {
-        buddy_anim_set_species_idx(species_idx % buddy_anim_get_species_count());
-    }
+    ui->buddy_mode = true;   /* 恒为 ASCII */
+    buddy_anim_set_species_idx(species_idx % buddy_anim_get_species_count());
     /* 14. 配置 BOOT 键 GPIO */
     gpio_reset_pin(BOOT_KEY_PIN);
     gpio_set_direction(BOOT_KEY_PIN, GPIO_MODE_INPUT);
     gpio_pullup_en(BOOT_KEY_PIN);
 
-    ESP_LOGI(TAG, "Buddy mode: %s", ui->buddy_mode ? "ASCII" : "GIF");
+    ESP_LOGI(TAG, "Buddy mode: ASCII (image playback removed)");
     ESP_LOGI(TAG, "Main loop starting (buddy+boot_key merged)");
 
     /* 15. 主循环（buddy_main_loop 内部已包含 boot_key + vTaskDelay） */

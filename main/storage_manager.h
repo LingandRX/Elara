@@ -36,7 +36,6 @@ esp_err_t storage_mkdir(const char *path);
 /**
  * 初始化宠物动画目录结构
  */
-void storage_init_pet_dirs(void);
 
 /**
  * 获取可用空间

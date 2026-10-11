@@ -67,28 +67,6 @@ esp_err_t storage_mkdir(const char *path) {
     return ESP_OK;
 }
 
-void storage_init_pet_dirs(void) {
-    ESP_LOGI(TAG, "Initializing pet animation directories...");
-    
-    storage_mkdir("/spiffs/sprites");
-    
-    const char *dirs[] = {
-        "/spiffs/sprites/idle",
-        "/spiffs/sprites/run_right",
-        "/spiffs/sprites/run_left",
-        "/spiffs/sprites/waving",
-        "/spiffs/sprites/jumping",
-        "/spiffs/sprites/failed",
-        "/spiffs/sprites/waiting",
-        "/spiffs/sprites/action",
-        "/spiffs/sprites/inspect",
-        "/spiffs/sprites/deadloop"
-    };
-    
-    for (int i = 0; i < sizeof(dirs) / sizeof(dirs[0]); i++) {
-        storage_mkdir(dirs[i]);
-    }
-}
 
 esp_err_t storage_get_info(size_t *total, size_t *used) {
     return esp_littlefs_info("storage", total, used);
