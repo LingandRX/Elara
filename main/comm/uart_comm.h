@@ -9,10 +9,10 @@
 
 // 命令类型
 typedef enum {
-    CMD_STATUS,     // {"type":"status","state":"..."}
-    CMD_CHAT,       // {"type":"chat","role":"...","text":"..."}
+    CMD_STATUS,     // legacy; no longer enqueued
+    CMD_CHAT,       // legacy; no longer enqueued
     CMD_CLEAR,      // {"type":"cmd","action":"clear"}
-    CMD_PROGRESS,   // {"type":"progress","value":0-100}
+    CMD_PROGRESS,   // legacy; no longer enqueued
     CMD_PETDEX,     // {"type":"petdex","state":"..."}
     CMD_UPLOAD,     // {"type":"upload","size":123456}
     CMD_UNKNOWN

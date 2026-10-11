@@ -187,12 +187,14 @@ void comm_parse_cmd(const char *line) {
     if (cJSON_IsString(type)) {
         UartCmd cmd = {0};
         if (strcmp(type->valuestring, "status") == 0) {
-            cJSON *state = cJSON_GetObjectItem(root, "state");
-            if (cJSON_IsString(state)) {
-                cmd.type = CMD_STATUS;
-                strncpy(cmd.state, state->valuestring, sizeof(cmd.state) - 1);
-                xQueueSend(cmdQueue, &cmd, 0);
-            }
+            /* 遗留 status 不再入命令队列；Buddy JSON 仍由下方 buddy_feed_usb_line 处理 */
+            ESP_LOGI(TAG, "legacy status ignored (not enqueued); use Buddy JSON");
+        } else if (strcmp(type->valuestring, "chat") == 0) {
+            /* 遗留 chat 不再入命令队列；主界面已是 Buddy，未接入旧聊天 UI */
+            ESP_LOGI(TAG, "legacy chat ignored (not enqueued); use Buddy JSON");
+        } else if (strcmp(type->valuestring, "progress") == 0) {
+            /* 遗留 progress 不下发到 cmd_proc；上传进度走 event 回传 */
+            ESP_LOGI(TAG, "legacy progress ignored (not enqueued)");
         } else if (strcmp(type->valuestring, "upload") == 0) {
             cJSON *size = cJSON_GetObjectItem(root, "size");
             cJSON *path = cJSON_GetObjectItem(root, "path");
@@ -204,15 +206,6 @@ void comm_parse_cmd(const char *line) {
             if (cJSON_IsString(state)) {
                 cmd.type = CMD_PETDEX;
                 strncpy(cmd.state, state->valuestring, sizeof(cmd.state) - 1);
-                xQueueSend(cmdQueue, &cmd, 0);
-            }
-        } else if (strcmp(type->valuestring, "chat") == 0) {
-            cJSON *role = cJSON_GetObjectItem(root, "role");
-            cJSON *text = cJSON_GetObjectItem(root, "text");
-            if (cJSON_IsString(role) && cJSON_IsString(text)) {
-                cmd.type = CMD_CHAT;
-                strncpy(cmd.role, role->valuestring, sizeof(cmd.role) - 1);
-                strncpy(cmd.text, text->valuestring, sizeof(cmd.text) - 1);
                 xQueueSend(cmdQueue, &cmd, 0);
             }
         }

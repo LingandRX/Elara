@@ -2,7 +2,7 @@
 
 ## 概述
 
-WiFi 管理模块 (`main/wifi_manager.c`) 负责 ESP32-S3 的 STA 模式连接，包含驱动初始化、凭据加载（NVS 优先，硬编码回退）、自动重连（指数退避）、IP 获取事件处理，并在联网成功后触发 SNTP 时间同步。与 TCP Server（端口 8080）解耦，TCP 监听不依赖 WiFi 连接状态。
+WiFi 管理模块 (`main/wifi_manager.c`) 负责 ESP32-S3 的 STA 模式连接，包含驱动初始化、凭据加载（NVS `wifinet` 优先，可从旧版 `wifi_cfg` 迁移；无配置则为空列表）、自动重连（指数退避）、IP 获取事件处理，并在联网成功后触发 SNTP 时间同步。与 TCP Server（端口 8080）解耦，TCP 监听不依赖 WiFi 连接状态。
 
 ## 相关文件
 
@@ -39,9 +39,10 @@ esp_wifi_init(WIFI_INIT_CONFIG_DEFAULT) → 驱动初始化（配置来自 sdkco
   ├─ WIFI_EVENT / ESP_EVENT_ANY_ID       → wifi_event_handler
   └─ IP_EVENT / IP_EVENT_STA_GOT_IP      → wifi_event_handler
 
-读取凭据（二选一）:
-  ├─ NVS "wifi_cfg" 命名空间有 ssid → 用保存的 ssid+password
-  └─ 无 → 硬编码回退 "ZTE-6AkyCN" / "07200329"
+读取已保存网络（saved_load）:
+  ├─ NVS "wifinet" 有有效条目 → 加载多网络列表
+  ├─ 否则若旧版 "wifi_cfg" 有 ssid → 迁移到 wifinet
+  └─ 均无 → 保持空列表（需 UI 或 `wifi <ssid> <password>` 配置；无出厂硬编码凭据）
 
 esp_wifi_set_mode(WIFI_MODE_STA)     → 仅 STA 模式
 esp_wifi_set_config(WIFI_IF_STA, ...)
@@ -86,11 +87,11 @@ sequenceDiagram
     M->>NVS: buddy_settings_init() 读 s_wifi (默认 true)
     M->>WM: wifi_manager_init()
     WM->>WM: esp_netif_init / event_loop / netif_sta / esp_wifi_init
-    WM->>NVS: 查 wifi_cfg/ssid
-    alt 有保存凭据
-        NVS-->>WM: ssid+password
+    WM->>NVS: 读 wifinet（必要时迁移 wifi_cfg）
+    alt 有保存/迁移凭据
+        NVS-->>WM: 已保存网络列表
     else 首次启动(无凭据)
-        NVS-->>WM: 硬编码回退 ZTE-6AkyCN
+        NVS-->>WM: 空列表（不写入硬编码凭据）
     end
     WM->>WM: set_mode(STA) + set_config
     M->>WM: wifi_manager_set_enabled(set->wifi)
@@ -123,11 +124,11 @@ sequenceDiagram
 
 ### 2. NVS 凭据存在性
 
-`wifi_cfg/ssid` 是否存在决定用"保存凭据"还是"硬编码回退"。硬编码凭据是编译期常量，首次启动/刷机清 NVS 后生效。
+优先读 `wifinet` 多网络存储；若为空则尝试从旧版 `wifi_cfg` 迁移。两者皆无时保持**空列表**，不会写入出厂硬编码 SSID/密码。已写入 NVS 的旧种子需在设备上「忘记网络」或清除相关 NVS 后才会消失。
 
 ### 3. NVS 分区状态
 
-`nvs_flash_init()` 返回 `NO_FREE_PAGES`/`NEW_VERSION_FOUND` 时会**整区擦除重建** → 所有设置和凭据丢失 → `s_wifi` 回到默认 true、凭据回退硬编码。
+`nvs_flash_init()` 返回 `NO_FREE_PAGES`/`NEW_VERSION_FOUND` 时会**整区擦除重建** → 所有设置和凭据丢失 → `s_wifi` 回到默认 true、网络列表为空（需重新配置）。
 
 ### 4. 任务创建顺序（内存因素）
 

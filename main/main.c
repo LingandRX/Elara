@@ -165,7 +165,8 @@ static void cmd_process_task(void *pvParam) {
     UartCmd cmd;
     while (1) {
         if (xQueueReceive(cmdQueue, &cmd, pdMS_TO_TICKS(100)) == pdTRUE) {
-            /* petdex 命令: 打开 Petdex 动画页并切换状态 */
+            /* 仅处理 PETDEX。CMD_STATUS/CMD_CHAT/CMD_PROGRESS 故意不处理：
+             * 遗留类型已在 comm_parse_cmd 中不再入队，改走 Buddy JSON。 */
             if (cmd.type == CMD_PETDEX) {
                 if (lv_port_disp_lock(-1)) {
                     pet_ui_set_state_by_name(cmd.state);

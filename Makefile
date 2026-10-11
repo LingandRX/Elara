@@ -70,8 +70,8 @@ font:
 info:
 	@echo "项目名称: Elara"
 	@echo "目标芯片: ESP32-S3"
-	@echo "开发框架: ESP-IDF v6.0.1"
-	@echo "图形库: LVGL v9.1"
+	@echo "开发框架: ESP-IDF >=5.0 (推荐 6.0.x，见 main/idf_component.yml)"
+	@echo "图形库: LVGL ^8.4.0"
 	@echo "显示驱动: ST7789V2"
 	@echo "触摸芯片: CST816T"
 

@@ -2,187 +2,92 @@
 
 ## 项目概述
 
-Elara 是一个基于 ESP32-S3 的聊天设备项目，使用 ESP32-S3-Touch-LCD-1.9 开发板，配备 1.9 英寸触摸屏。
+Elara 是一个基于 ESP32-S3 的桌面宠物 / AI 伴侣固件，使用 **ESP32-S3-Touch-LCD-1.9** 开发板，配备 1.9 英寸触摸屏。主 UI 路径为 Buddy 状态机 + Petdex 动画。
 
 ## 技术栈
 
-| 组件 | 技术 | 版本 |
-|------|------|------|
+| 组件 | 技术 | 版本 / 说明 |
+|------|------|-------------|
 | 主控芯片 | ESP32-S3 | - |
-| 开发框架 | ESP-IDF | v6.0.1 |
-| 图形库 | LVGL | v8.4.0 |
-| 显示驱动 | ST7789V2 | - |
-| 触摸芯片 | CST816T | - |
-| 通信协议 | UART (JSON) | - |
+| 开发框架 | ESP-IDF | 推荐 6.0.x；组件约束 `>=5.0`（`main/idf_component.yml`） |
+| 图形库 | LVGL | `^8.4.0` |
+| 显示驱动 | ST7789V2 | `lv_port_disp` + esp_lcd |
+| 触摸芯片 | CST816T | I2C 0x15 |
+| 通信 | UART + TCP:8080 | JSON / 明文 wifi 命令 |
 
 ## 硬件规格
 
 - **屏幕**: 1.9 英寸 TFT LCD, 170×320 像素, RGB565
 - **触摸**: 电容式触摸, I2C 接口, 单点触摸
-- **存储**: 16MB Flash, 8MB PSRAM
-- **通信**: UART (115200 baud)
+- **存储**: 16MB Flash, 8MB PSRAM（LittleFS 挂载于 `/spiffs`）
+- **通信**: USB-Serial / UART，以及 Wi-Fi TCP 8080
 
-## 软件架构
+## 软件架构（简图）
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                      应用层 (App)                        │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
-│  │  聊天界面     │  │  命令处理     │  │  状态管理     │  │
-│  │ lvgl_chat_ui │  │ cmd_process  │  │   status     │  │
-│  └──────────────┘  └──────────────┘  └──────────────┘  │
-├─────────────────────────────────────────────────────────┤
-│                      中间件层 (Middleware)                │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
-│  │    LVGL      │  │    FreeRTOS  │  │    JSON      │  │
-│  │   v8.4.0     │  │   Tasks      │  │   Parser     │  │
-│  └──────────────┘  └──────────────┘  └──────────────┘  │
-├─────────────────────────────────────────────────────────┤
-│                      驱动层 (Driver)                     │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
-│  │  LCD 驱动    │  │  触摸驱动     │  │  UART 驱动   │  │
-│  │   sh8601     │  │   esp_touch  │  │  uart_comm   │  │
-│  └──────────────┘  └──────────────┘  └──────────────┘  │
-├─────────────────────────────────────────────────────────┤
-│                      硬件层 (Hardware)                   │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
-│  │   ST7789V2   │  │   CST816T    │  │   ESP32-S3   │  │
-│  │   (SPI)      │  │   (I2C)      │  │   (UART)     │  │
-│  └──────────────┘  └──────────────┘  └──────────────┘  │
-└─────────────────────────────────────────────────────────┘
+应用层: Buddy UI / Petdex / WiFi UI / cmd_proc(PETDEX)
+中间件: LVGL 8.4 / FreeRTOS / cJSON
+驱动层: lv_port_disp(ST7789) / esp_touch(CST816T) / uart_comm / wifi_manager
+硬件层: ESP32-S3-Touch-LCD-1.9
 ```
 
-## 文件结构
+## 文件结构（与源码一致）
 
 ```
 Elara/
-├── main/                           # 主程序
-│   ├── main.c                     # 入口点
-│   ├── display/                   # 显示相关
-│   │   ├── sh8601.c/h            # LCD 驱动
-│   │   └── lvgl_display.c/h      # LVGL 显示适配
-│   ├── input/                     # 输入相关
-│   │   └── lvgl_touch.c/h        # 触摸输入适配
-│   ├── ui/                        # 用户界面
-│   │   ├── lvgl_chat_ui.c/h      # LVGL 版本 UI
-│   │   └── lvgl_widgets.c/h      # 自定义控件
-│   └── comm/                      # 通信协议
-│       └── uart_comm.c/h         # UART 通信
-├── components/                    # 组件库
-│   ├── lvgl/                     # LVGL 图形库
-│   ├── i2c_bsp/                  # I2C 驱动
-│   └── esp_touch/                # 触摸控制器驱动
-├── docs/                          # 文档
-│   ├── ESP32-S3-Touch-LCD-1.9.md # 开发板文档
-│   ├── LVGL_Integration.md       # LVGL 集成指南
-│   └── Project_Summary.md        # 项目总结
-├── tools/                         # 工具脚本
-│   └── generate_font.py          # 字体生成脚本
-├── examples/                      # 示例代码
-│   └── lvgl_example.c            # LVGL 使用示例
-├── build.sh                       # 构建脚本
-├── CMakeLists.txt                 # 项目配置
-├── sdkconfig.defaults             # 默认配置
-└── AGENTS.md                      # 项目文档
+├── main/
+│   ├── main.c
+│   ├── display/          # lv_port_disp, backlight_manager, lcd_config
+│   ├── input/            # lvgl_touch
+│   ├── ui/               # buddy/, pet_*, wifi_ui, 遗留 lvgl_chat_ui
+│   ├── buddy/            # buddy_state, buddy_stats
+│   ├── battery/
+│   ├── comm/             # uart_comm, tcp_server, sntp_sync, xfer
+│   ├── wifi_manager.c
+│   ├── storage_manager.c
+│   └── idf_component.yml
+├── components/           # i2c_bsp, esp_touch, lv_conf.h
+├── docs/
+├── tools/                # elara_host.py, verify_structure.py, ...
+├── Makefile
+├── CMakeLists.txt
+├── sdkconfig.defaults
+└── AGENTS.md
 ```
 
 ## 主要功能
 
-### 1. 聊天界面
-- 消息气泡显示 (用户/AI/系统)
-- 状态栏 (空闲/聆听/思考/回复/错误)
-- 情绪指示器
-- 流式消息支持
-- 消息滚动
+### 1. Buddy 主界面
+- Persona 状态机、时钟、菜单、设置、审批弹窗
+- 电池 / Wi-Fi / 背光相关 HUD
 
-### 2. 触摸交互
-- 单点触摸检测
-- 坐标映射 (0-4095 → 0-169/0-319)
-- 100Hz 轮询频率
+### 2. Petdex 动画
+- 通过 `{"type":"petdex","state":"..."}` 切换状态
+- 精灵图可经 TCP/UART 上传到 LittleFS
 
-### 3. 通信与网络支持
-- Wi-Fi 终端配置支持 (`wifi <ssid> <password>`) 且配置持久化（NVS）
-- UART (JSON) 命令协议与交互
-- TCP Server 监听 8080 端口用于网络指令接收
-- 支持四种基础命令类型:
-  - `status`: 状态更新
-  - `chat`: 聊天消息
-  - `cmd`: 包含清除聊天等功能
-  - `progress`: 进度条更新
+### 3. 触摸交互
+- CST816T 直接输出屏幕像素坐标
+- 当前为轮询读取（未用 TP_INT）
 
-### 4. LVGL 集成
-- 双缓冲模式
-- 200Hz 事件处理
-- 自定义控件库
-- 中文字体支持
+### 4. 通信与网络
+- Wi-Fi：NVS `wifinet` 多网络；无配置时为空列表（无出厂硬编码凭据）
+- 明文：`wifi <ssid> <password>`
+- `upload` / `petdex` 仍入队或直接处理
+- 遗留 `status` / `chat` / `progress`：**不再入命令队列**；Buddy JSON 另路径处理
 
 ## 开发指南
 
-### 快速开始
-
-1. 设置 ESP-IDF 环境
 ```bash
-. $HOME/esp/esp-idf/export.sh
+. $IDF_PATH/export.sh
+make set-target    # 或 idf.py set-target esp32s3
+make build
+make flash-monitor PORT=/dev/ttyACM0
 ```
 
-2. 设置目标芯片
-```bash
-./build.sh set-target
-```
-
-3. 编译项目
-```bash
-./build.sh build
-```
-
-4. 烧录并监控
-```bash
-./build.sh flash-monitor /dev/tty.usbmodem0
-```
-
-### 添加新功能
-
-1. **添加新控件**:
-   - 在 `main/ui/lvgl_widgets.c` 中添加控件实现
-   - 在 `main/ui/lvgl_widgets.h` 中添加函数声明
-
-2. **修改界面**:
-   - 编辑 `main/ui/lvgl_chat_ui.c` 修改聊天界面
-   - 使用 LVGL API 创建自定义界面
-
-3. **修改配置**:
-   - 编辑 `components/lvgl/include/lv_conf.h` 修改 LVGL 配置
-   - 编辑 `sdkconfig.defaults` 修改 ESP-IDF 配置
-
-## 性能优化
-
-### 触摸优化
-- 10ms 轮询间隔 (100Hz)
-- 坐标映射优化
-- 去抖动处理
-
-## 常见问题
-
-## 下一步计划
-
-1. **功能增强**
-   - 添加语音识别支持
-   - 实现表情动画
-   - 添加主题切换功能
-
-2. **性能优化**
-   - 优化 LVGL 渲染性能
-   - 减少内存占用
-   - 提高触摸响应速度
-
-3. **用户体验**
-   - 添加手势支持
-   - 实现滑动切换
-   - 优化动画效果
+依赖与版本以 `main/idf_component.yml` 为准。
 
 ## 参考资料
 
 - [ESP-IDF 文档](https://docs.espressif.com/projects/esp-idf/en/latest/)
 - [LVGL 文档](https://docs.lvgl.io/)
-- [ST7789V2 数据手册](https://www.sitronix.com.tw/)
-- [CST816T 数据手册](http://www.champion-micro.com/)
+- [开发板文档](ESP32-S3-Touch-LCD-1.9.md)
