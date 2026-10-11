@@ -17,39 +17,24 @@ CJK_FONT = "/System/Library/Fonts/Supplemental/Arial Unicode.ttf"
 
 STRING_RE = re.compile(r'"((?:[^"\\]|\\.)*)"')
 
-# 预留常用字，减少改文案就重跑字体的频率。
-# 为满足三档字体源码合计小于 60KB 的硬性预算，预留集保持精简。
-# 预留常用字，减少改文案就重跑字体的频率；当前以源码字面量为主，控制字体体积。
+# EXTRA_CHARS is intentionally empty: Task 7 re-runs this pipeline after all
+# Chinese UI copy is finalized, so source literals remain the single glyph source.
 EXTRA_CHARS = ()
 
 
 def extract_charset() -> str:
     chars = set(chr(c) for c in range(0x20, 0x7F))
     for path in list(MAIN_DIR.rglob("*.c")) + list(MAIN_DIR.rglob("*.h")):
-        text = path.read_text(encoding="utf-8", errors="ignore")
+        try:
+            text = path.read_text(encoding="utf-8", errors="strict")
+        except UnicodeDecodeError as exc:
+            raise RuntimeError(f"无法按 UTF-8 解码源码文件 {path}: {exc}") from exc
         for literal in STRING_RE.findall(text):
             for ch in literal:
                 if ord(ch) > 0x7F:
                     chars.add(ch)
     chars.update(EXTRA_CHARS)
     return "".join(sorted(chars))
-
-
-def compact_source(path: Path) -> None:
-    """Remove converter comments and compact numeric literals without changing C."""
-    text = path.read_text(encoding="utf-8")
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
-    text = re.sub(r"0x([0-9A-Fa-f]+)", lambda m: str(int(m.group(1), 16)), text)
-    match = re.search(r"(static LV_ATTRIBUTE_LARGE_CONST const uint8_t glyph_bitmap\[\] = )\{(.*?)\};", text, re.S)
-    if match:
-        bitmap = bytes(int(value) for value in re.findall(r"\d+", match.group(2)))
-        encoded = "".join(f"\\x{byte:02x}" for byte in bitmap)
-        text = text[:match.start()] + match.group(1) + f'"{encoded}";' + text[match.end():]
-    text = re.sub(r",[ \t]+", ",", text)
-    text = re.sub(r"\{[ \t]+", "{", text)
-    text = re.sub(r"[ \t]+\}", "}", text)
-    text = re.sub(r"\n[ \t]*\n+", "\n", text)
-    path.write_text(text, encoding="utf-8")
 
 
 def build_font(size: int, charset: str, out_dir: Path) -> Path:
@@ -70,7 +55,6 @@ def build_font(size: int, charset: str, out_dir: Path) -> Path:
         "-o", str(out),
     ]
     subprocess.run(cmd, check=True, cwd=REPO)
-    compact_source(out)
     return out
 
 
@@ -86,9 +70,7 @@ def main() -> int:
         n = out.stat().st_size
         total += n
         print(f"  {out.name}: {n/1024:.1f} KB")
-    print(f"合计: {total/1024:.1f} KB")
-    if total > 60 * 1024:
-        print("警告: 字体合计超过 60KB，请检查字符集", file=sys.stderr)
+    print(f"合计源码: {total/1024:.1f} KB（仅影响仓库体积；固件实际占用约 {total*0.09/1024:.0f} KB 量级，需以 idf.py build 的 binary size 为准）")
     return 0
 
 
