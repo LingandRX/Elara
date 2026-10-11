@@ -31,20 +31,16 @@
 #include <string.h>
 
 #include "lvgl.h"
+#include "buddy_theme.h"
 
 static const char *TAG = "WIFI_UI";
 
-/* ============ 颜色（与 buddy_ui 薄荷青方案一致） ============ */
-#define COLOR_BG       lv_color_hex(0x08141E)
-#define COLOR_PANEL    lv_color_hex(0x0F2A38)
-#define COLOR_PANEL_LT lv_color_hex(0x12313F)
-#define COLOR_HOT      lv_color_hex(0x00D4C8)
-#define COLOR_GREEN    lv_color_hex(0x00FF00)
-#define COLOR_RED      lv_color_hex(0xFF4040)
-#define COLOR_TEXT     lv_color_hex(0xFFFFFF)
-#define COLOR_TEXT_DIM lv_color_hex(0x6E92A8)
-#define COLOR_CONN_BG  lv_color_hex(0x0D2E24)
-#define COLOR_BAR_OFF  lv_color_hex(0x24435A)
+/* ============ 颜色（复用 buddy Warm 主题；不重复定义主题色） ============ */
+#define COLOR_PANEL_LT COLOR_PANEL2
+#define COLOR_HOT      COLOR_ACCENT
+#define COLOR_WARN     COLOR_WARM
+#define COLOR_CONN_BG  COLOR_PANEL2
+#define COLOR_BAR_OFF  COLOR_LINE
 
 /* ============ 布局常量 ============ */
 #define SCREEN_W   170
@@ -127,14 +123,14 @@ static int rssi_to_bars(int8_t rssi) {
 
 static const char *auth_to_str(wifi_auth_mode_t auth) {
     switch (auth) {
-    case WIFI_AUTH_OPEN:          return "Open";
+    case WIFI_AUTH_OPEN:          return "开放";
     case WIFI_AUTH_WEP:           return "WEP";
     case WIFI_AUTH_WPA_PSK:       return "WPA";
     case WIFI_AUTH_WPA2_PSK:      return "WPA2";
     case WIFI_AUTH_WPA_WPA2_PSK:  return "WPA/WPA2";
     case WIFI_AUTH_WPA3_PSK:      return "WPA3";
     case WIFI_AUTH_WPA2_WPA3_PSK: return "WPA2/WPA3";
-    default:                      return "Secured";
+    default:                      return "加密";
     }
 }
 
@@ -199,8 +195,8 @@ static void pwd_do_connect(void) {
     const char *txt = lv_textarea_get_text(s_pwd_ta);
     size_t len = strlen(txt);
     if (len < 8) {
-        lv_label_set_text(s_pwd_hint, "Password needs 8+ chars");
-        lv_obj_set_style_text_color(s_pwd_hint, COLOR_RED, 0);
+        lv_label_set_text(s_pwd_hint, "密码至少 8 位");
+        lv_obj_set_style_text_color(s_pwd_hint, COLOR_WARN, 0);
         return;
     }
     char ssid[33];
@@ -302,6 +298,7 @@ static void create_pwd_dialog(void) {
     s_pwd_ssid_label = lv_label_create(s_pwd_view);
     lv_label_set_text(s_pwd_ssid_label, "-");
     lv_obj_set_style_text_color(s_pwd_ssid_label, COLOR_HOT, 0);
+    lv_obj_set_style_text_font(s_pwd_ssid_label, FONT_MD, 0);
     lv_label_set_long_mode(s_pwd_ssid_label, LV_LABEL_LONG_DOT);
     lv_obj_set_width(s_pwd_ssid_label, SCREEN_W - 38);
     lv_obj_align(s_pwd_ssid_label, LV_ALIGN_TOP_LEFT, 36, 9);
@@ -312,9 +309,10 @@ static void create_pwd_dialog(void) {
     lv_textarea_set_one_line(s_pwd_ta, true);
     lv_textarea_set_password_mode(s_pwd_ta, true);
     lv_textarea_set_max_length(s_pwd_ta, 64);   /* ESP32 WiFi 密码上限，防溢出 */
-    lv_textarea_set_placeholder_text(s_pwd_ta, "Password (8-64)");
+    lv_textarea_set_placeholder_text(s_pwd_ta, "密码 (8-64)");
     lv_obj_set_style_bg_color(s_pwd_ta, COLOR_PANEL, 0);
     lv_obj_set_style_text_color(s_pwd_ta, COLOR_TEXT, 0);
+    lv_obj_set_style_text_font(s_pwd_ta, FONT_MD, 0);
     lv_obj_set_style_border_color(s_pwd_ta, COLOR_TEXT_DIM, 0);
     lv_obj_align(s_pwd_ta, LV_ALIGN_TOP_LEFT, 2, 34);
     lv_obj_add_event_cb(s_pwd_ta, pwd_ta_cb, LV_EVENT_VALUE_CHANGED, NULL);
@@ -328,8 +326,9 @@ static void create_pwd_dialog(void) {
     lv_obj_align(s_pwd_btn_connect, LV_ALIGN_TOP_LEFT, 2, 76);
     lv_obj_add_event_cb(s_pwd_btn_connect, pwd_btn_cb, LV_EVENT_CLICKED, (void *)(intptr_t)1);
     lbl = lv_label_create(s_pwd_btn_connect);
-    lv_label_set_text(lbl, "Connect");
+    lv_label_set_text(lbl, "连接");
     lv_obj_set_style_text_color(lbl, COLOR_TEXT, 0);
+    lv_obj_set_style_text_font(lbl, FONT_MD, 0);
     lv_obj_center(lbl);
 
     s_btn_eye = lv_btn_create(s_pwd_view);
@@ -347,6 +346,7 @@ static void create_pwd_dialog(void) {
     s_pwd_hint = lv_label_create(s_pwd_view);
     lv_label_set_text(s_pwd_hint, "");
     lv_obj_set_style_text_color(s_pwd_hint, COLOR_TEXT_DIM, 0);
+    lv_obj_set_style_text_font(s_pwd_hint, FONT_SM, 0);
     lv_label_set_long_mode(s_pwd_hint, LV_LABEL_LONG_DOT);
     lv_obj_set_width(s_pwd_hint, SCREEN_W - 8);
     lv_obj_align(s_pwd_hint, LV_ALIGN_TOP_MID, 0, 110);
@@ -408,8 +408,8 @@ static void item_click_cb(lv_event_t *e) {
     const wifi_item_t *it = &s_items[idx];
 
     if (wifi_manager_get_state() == WIFI_MANAGER_DISABLED) {
-        lv_label_set_text(s_status_label, "WiFi OFF - enable in Settings");
-        lv_obj_set_style_text_color(s_status_label, COLOR_RED, 0);
+        lv_label_set_text(s_status_label, "WiFi 已关闭，请在设置中开启");
+        lv_obj_set_style_text_color(s_status_label, COLOR_WARN, 0);
         return;
     }
     if (it->connected || it->connecting) return; /* 已连接/连接中不可点 */
@@ -471,6 +471,7 @@ static void rebuild_list(void) {
         lv_obj_t *ssid = lv_label_create(item);
         lv_label_set_text(ssid, it->ssid);
         lv_obj_set_style_text_color(ssid, COLOR_TEXT, 0);
+        lv_obj_set_style_text_font(ssid, FONT_MD, 0);
         lv_label_set_long_mode(ssid, LV_LABEL_LONG_DOT);
         lv_obj_set_width(ssid, 92);
         lv_obj_align(ssid, LV_ALIGN_TOP_LEFT, 22, 0);
@@ -486,17 +487,21 @@ static void rebuild_list(void) {
         if (it->connected) {
             char ip[16] = "";
             wifi_manager_get_ip(ip, sizeof(ip));
-            lv_label_set_text_fmt(line2, LV_SYMBOL_OK " Connected  %s", ip);
+            lv_label_set_text_fmt(line2, LV_SYMBOL_OK " 已连接  %s", ip);
             lv_obj_set_style_text_color(line2, COLOR_GREEN, 0);
+            lv_obj_set_style_text_font(line2, FONT_SM, 0);
         } else if (it->connecting) {
-            lv_label_set_text(line2, "Connecting...");
+            lv_label_set_text(line2, "连接中...");
             lv_obj_set_style_text_color(line2, COLOR_HOT, 0);
+            lv_obj_set_style_text_font(line2, FONT_SM, 0);
         } else if (it->saved) {
-            lv_label_set_text_fmt(line2, "Saved  %s", auth_to_str(it->auth_mode));
+            lv_label_set_text_fmt(line2, "已保存  %s", auth_to_str(it->auth_mode));
             lv_obj_set_style_text_color(line2, COLOR_TEXT_DIM, 0);
+            lv_obj_set_style_text_font(line2, FONT_SM, 0);
         } else {
             lv_label_set_text_fmt(line2, "%s", auth_to_str(it->auth_mode));
             lv_obj_set_style_text_color(line2, COLOR_TEXT_DIM, 0);
+            lv_obj_set_style_text_font(line2, FONT_SM, 0);
         }
     }
 
@@ -512,31 +517,31 @@ static void refresh_header(void) {
 
     /* 状态行 */
     if (st == WIFI_MANAGER_DISABLED) {
-        lv_label_set_text(s_status_label, "WiFi OFF - enable in Settings");
-        lv_obj_set_style_text_color(s_status_label, COLOR_RED, 0);
+        lv_label_set_text(s_status_label, "WiFi 已关闭，请在设置中开启");
+        lv_obj_set_style_text_color(s_status_label, COLOR_WARN, 0);
     } else if (scanning) {
-        lv_label_set_text(s_status_label, "Scanning...");
+        lv_label_set_text(s_status_label, "扫描中...");
         lv_obj_set_style_text_color(s_status_label, COLOR_HOT, 0);
     } else if (st == WIFI_MANAGER_CONNECTING) {
         /* 连接目标在列表项上有 "Connecting..." 标记 */
-        lv_label_set_text(s_status_label, "Connecting...");
+        lv_label_set_text(s_status_label, "连接中...");
         lv_obj_set_style_text_color(s_status_label, COLOR_HOT, 0);
     } else if (st == WIFI_MANAGER_CONNECTED) {
         char ssid[33] = "";
         wifi_manager_get_connected_ssid(ssid, sizeof(ssid));
-        lv_label_set_text_fmt(s_status_label, LV_SYMBOL_OK " %s", ssid[0] ? ssid : "Connected");
+        lv_label_set_text_fmt(s_status_label, LV_SYMBOL_OK " %s", ssid[0] ? ssid : "已连接");
         lv_obj_set_style_text_color(s_status_label, COLOR_GREEN, 0);
     } else if (st == WIFI_MANAGER_FAILED) {
         char reason[32] = "";
         wifi_manager_get_fail_reason(reason, sizeof(reason));
-        lv_label_set_text_fmt(s_status_label, "Failed: %s", reason);
-        lv_obj_set_style_text_color(s_status_label, COLOR_RED, 0);
+        lv_label_set_text_fmt(s_status_label, "连接失败: %s", reason);
+        lv_obj_set_style_text_color(s_status_label, COLOR_WARN, 0);
     } else {
-        lv_label_set_text_fmt(s_status_label, "%d network%s%s",
+        lv_label_set_text_fmt(s_status_label, "%d 个网络%s",
                               (int)s_item_count,
-                              s_item_count == 1 ? "" : "s",
-                              s_item_count == 0 ? " - tap scan" : "");
+                              s_item_count == 0 ? "，点击扫描" : "");
         lv_obj_set_style_text_color(s_status_label, COLOR_TEXT_DIM, 0);
+        lv_obj_set_style_text_font(s_status_label, FONT_SM, 0);
     }
 
     /* 重扫描按钮：扫描中/连接中/关闭时置灰 */
@@ -544,6 +549,7 @@ static void refresh_header(void) {
     lv_obj_set_style_bg_color(s_btn_rescan, busy ? COLOR_PANEL : COLOR_PANEL_LT, 0);
     lv_obj_set_style_text_color(lv_obj_get_child(s_btn_rescan, 0),
                                 busy ? COLOR_TEXT_DIM : COLOR_HOT, 0);
+    lv_obj_set_style_text_font(lv_obj_get_child(s_btn_rescan, 0), FONT_SM, 0);
 }
 
 /* ============ 对外接口 ============ */
@@ -577,8 +583,8 @@ static void btn_rescan_cb(lv_event_t *e) {
     if (err == ESP_OK) {
         wifi_ui_refresh_now();
     } else if (err == ESP_ERR_INVALID_STATE) {
-        lv_label_set_text(s_status_label, "Busy or WiFi off");
-        lv_obj_set_style_text_color(s_status_label, COLOR_RED, 0);
+        lv_label_set_text(s_status_label, "忙或 WiFi 已关闭");
+        lv_obj_set_style_text_color(s_status_label, COLOR_WARN, 0);
     }
 }
 
@@ -608,8 +614,9 @@ void wifi_ui_init(void) {
     lv_obj_center(lbl);
 
     lv_obj_t *title = lv_label_create(s_page);
-    lv_label_set_text(title, LV_SYMBOL_WIFI " WiFi");
+    lv_label_set_text(title, LV_SYMBOL_WIFI " 网络");
     lv_obj_set_style_text_color(title, COLOR_HOT, 0);
+    lv_obj_set_style_text_font(title, FONT_MD, 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 7);
 
     s_btn_rescan = lv_obj_create(s_page);
@@ -627,6 +634,7 @@ void wifi_ui_init(void) {
     s_status_label = lv_label_create(s_page);
     lv_label_set_text(s_status_label, "");
     lv_obj_set_style_text_color(s_status_label, COLOR_TEXT_DIM, 0);
+    lv_obj_set_style_text_font(s_status_label, FONT_SM, 0);
     lv_label_set_long_mode(s_status_label, LV_LABEL_LONG_DOT);
     lv_obj_set_width(s_status_label, SCREEN_W - 8);
     lv_obj_align(s_status_label, LV_ALIGN_TOP_MID, 0, HEADER_H + 1);

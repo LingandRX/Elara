@@ -31,7 +31,6 @@
 - `main/ui/pet_ui.c` - Petdex 动画页面
 - `main/ui/pet_anim.c` - 宠物动画精灵图加载
 - `main/ui/wifi_ui.c` - WiFi 管理页面（扫描列表/连接状态/密码输入，经 wifi_manager API 操作）
-- `main/ui/lvgl_chat_ui.c` - LVGL 聊天界面（兼容遗留）
 - `main/ui/lvgl_widgets.c` - LVGL 自定义控件
 - `main/buddy/buddy_state.c` - Buddy 核心状态机（7 种 Persona 状态、会话数据）
 - `main/buddy/buddy_stats.c` - Buddy 宠物统计（等级/心情/能量等，NVS 持久化）

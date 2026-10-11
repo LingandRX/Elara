@@ -8,6 +8,7 @@
 #include "esp_log.h"
 #include "esp_system.h"
 #include "lvgl.h"
+#include "buddy_theme.h"
 #include <stdio.h>
 #include <sys/stat.h>
 
@@ -84,13 +85,14 @@ static void update_deadloop_effect(uint8_t frame) {
         } else {
             lv_label_set_text(pet_face_label, "WDT");
         }
-        lv_obj_set_style_text_color(pet_face_label, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_text_color(pet_face_label, COLOR_TEXT, 0);
+        lv_obj_set_style_text_font(pet_face_label, FONT_MD, 0);
     }
 
     if (deadloop_label) {
         lv_obj_clear_flag(deadloop_label, LV_OBJ_FLAG_HIDDEN);
-        lv_label_set_text(deadloop_label, frame < 4 ? "deadloop: watchdog starving" : "while(1) detected\nplease feed watchdog");
-        lv_obj_set_style_text_color(deadloop_label, frame < 4 ? lv_color_hex(0xFF3030) : lv_color_hex(0xFFE66D), 0);
+        lv_label_set_text(deadloop_label, frame < 4 ? "死循环：看门狗饥饿" : "检测到 while(1)\n请喂食看门狗");
+        lv_obj_set_style_text_color(deadloop_label, frame < 4 ? COLOR_RED : COLOR_ACCENT, 0);
     }
 
     set_deadloop_particles_hidden(!blast);
@@ -119,7 +121,7 @@ static void reset_deadloop_effect(void) {
         lv_obj_clear_flag(pet_obj, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_size(pet_obj, DISPLAY_W, DISPLAY_H);
         lv_obj_set_style_opa(pet_obj, LV_OPA_COVER, 0);
-        lv_obj_set_style_border_color(pet_obj, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_border_color(pet_obj, COLOR_TEXT, 0);
     }
     set_deadloop_particles_hidden(true);
 
@@ -128,7 +130,8 @@ static void reset_deadloop_effect(void) {
     }
     if (pet_face_label) {
         lv_label_set_text(pet_face_label, "Pixel");
-        lv_obj_set_style_text_color(pet_face_label, lv_color_hex(0x080810), 0);
+        lv_obj_set_style_text_color(pet_face_label, COLOR_BG, 0);
+    lv_obj_set_style_text_font(pet_face_label, FONT_MD, 0);
     }
 }
 
@@ -224,7 +227,7 @@ static void render_current_frame(void) {
     if (!cfg) return;
 
     if (frame_label) {
-        lv_label_set_text_fmt(frame_label, "Frame: %d / %d", current_frame, cfg->frames);
+        lv_label_set_text_fmt(frame_label, "帧 %d / %d", current_frame, cfg->frames);
     }
 
     if (pet_img && !lv_obj_has_flag(lv_obj_get_parent(pet_img), LV_OBJ_FLAG_HIDDEN)) {
@@ -297,15 +300,16 @@ static void pet_nav_btn_cb(lv_event_t *e) {
 void pet_ui_init(void) {
     pet_page = lv_obj_create(lv_scr_act());
     lv_obj_set_size(pet_page, LV_HOR_RES, LV_VER_RES);
-    lv_obj_set_style_bg_color(pet_page, lv_color_hex(0x080810), 0);
+    lv_obj_set_style_bg_color(pet_page, COLOR_BG, 0);
     lv_obj_set_style_border_width(pet_page, 0, 0);
     lv_obj_set_style_radius(pet_page, 0, 0);
     lv_obj_clear_flag(pet_page, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(pet_page, LV_OBJ_FLAG_HIDDEN);
 
     lv_obj_t *title = lv_label_create(pet_page);
-    lv_label_set_text(title, "PETDEX ANIMATION");
-    lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0);
+    lv_label_set_text(title, "宠物图鉴");
+    lv_obj_set_style_text_color(title, COLOR_TEXT, 0);
+    lv_obj_set_style_text_font(title, FONT_LG, 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 20);
 
     pet_obj = lv_obj_create(pet_page);
@@ -313,13 +317,14 @@ void pet_ui_init(void) {
     lv_obj_set_style_radius(pet_obj, 10, 0);
     lv_obj_set_style_bg_color(pet_obj, lv_color_hex(0x00C864), 0);
     lv_obj_set_style_border_width(pet_obj, 2, 0);
-    lv_obj_set_style_border_color(pet_obj, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_border_color(pet_obj, COLOR_TEXT, 0);
     lv_obj_clear_flag(pet_obj, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_align(pet_obj, LV_ALIGN_CENTER, 0, -20);
 
     pet_face_label = lv_label_create(pet_obj);
     lv_label_set_text(pet_face_label, "Pixel");
-    lv_obj_set_style_text_color(pet_face_label, lv_color_hex(0x080810), 0);
+    lv_obj_set_style_text_color(pet_face_label, COLOR_BG, 0);
+    lv_obj_set_style_text_font(pet_face_label, FONT_MD, 0);
     lv_obj_set_style_text_align(pet_face_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(pet_face_label, LV_ALIGN_CENTER, 0, 0);
 
@@ -334,18 +339,21 @@ void pet_ui_init(void) {
     }
 
     state_label = lv_label_create(pet_page);
-    lv_label_set_text(state_label, "State: Idle");
-    lv_obj_set_style_text_color(state_label, lv_color_hex(0xA0A0AA), 0);
+    lv_label_set_text(state_label, "状态: 待机");
+    lv_obj_set_style_text_color(state_label, COLOR_TEXT_DIM, 0);
+    lv_obj_set_style_text_font(state_label, FONT_SM, 0);
     lv_obj_align(state_label, LV_ALIGN_CENTER, 0, 50);
 
     frame_label = lv_label_create(pet_page);
-    lv_label_set_text(frame_label, "Frame: 1 / 6");
-    lv_obj_set_style_text_color(frame_label, lv_color_hex(0x64B4FF), 0);
+    lv_label_set_text(frame_label, "帧 1 / 6");
+    lv_obj_set_style_text_color(frame_label, COLOR_ACCENT, 0);
+    lv_obj_set_style_text_font(frame_label, FONT_SM, 0);
     lv_obj_align(frame_label, LV_ALIGN_CENTER, 0, 75);
 
     deadloop_label = lv_label_create(pet_page);
-    lv_label_set_text(deadloop_label, "while(1) detected\nplease feed watchdog");
-    lv_obj_set_style_text_color(deadloop_label, lv_color_hex(0xFFE66D), 0);
+    lv_label_set_text(deadloop_label, "检测到 while(1)\n请喂食看门狗");
+    lv_obj_set_style_text_color(deadloop_label, COLOR_ACCENT, 0);
+    lv_obj_set_style_text_font(deadloop_label, FONT_SM, 0);
     lv_obj_set_style_text_align(deadloop_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_add_flag(deadloop_label, LV_OBJ_FLAG_HIDDEN);
     lv_obj_align(deadloop_label, LV_ALIGN_CENTER, 0, 105);
@@ -353,28 +361,30 @@ void pet_ui_init(void) {
     /* 底部导航按钮 (完全参考 About 页面的 prev/next 按钮) */
     lv_obj_t *prev_btn = lv_obj_create(pet_page);
     lv_obj_set_size(prev_btn, 56, 24);
-    lv_obj_set_style_bg_color(prev_btn, lv_color_hex(0x0F2A38), 0);
+    lv_obj_set_style_bg_color(prev_btn, COLOR_PANEL, 0);
     lv_obj_set_style_border_width(prev_btn, 0, 0);
     lv_obj_set_style_radius(prev_btn, 6, 0);
     lv_obj_clear_flag(prev_btn, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_align(prev_btn, LV_ALIGN_BOTTOM_LEFT, 6, -6);
     lv_obj_add_event_cb(prev_btn, pet_nav_btn_cb, LV_EVENT_CLICKED, (void *)1);
     lv_obj_t *prev_label = lv_label_create(prev_btn);
-    lv_label_set_text(prev_label, LV_SYMBOL_LEFT " prev");
-    lv_obj_set_style_text_color(prev_label, lv_color_hex(0xFFFFFF), 0);
+    lv_label_set_text(prev_label, LV_SYMBOL_LEFT " 上一个");
+    lv_obj_set_style_text_color(prev_label, COLOR_TEXT, 0);
+    lv_obj_set_style_text_font(prev_label, FONT_SM, 0);
     lv_obj_center(prev_label);
 
     lv_obj_t *next_btn = lv_obj_create(pet_page);
     lv_obj_set_size(next_btn, 56, 24);
-    lv_obj_set_style_bg_color(next_btn, lv_color_hex(0x0F2A38), 0);
+    lv_obj_set_style_bg_color(next_btn, COLOR_PANEL, 0);
     lv_obj_set_style_border_width(next_btn, 0, 0);
     lv_obj_set_style_radius(next_btn, 6, 0);
     lv_obj_clear_flag(next_btn, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_align(next_btn, LV_ALIGN_BOTTOM_RIGHT, -6, -6);
     lv_obj_add_event_cb(next_btn, pet_nav_btn_cb, LV_EVENT_CLICKED, (void *)2);
     lv_obj_t *next_label = lv_label_create(next_btn);
-    lv_label_set_text(next_label, "next " LV_SYMBOL_RIGHT);
-    lv_obj_set_style_text_color(next_label, lv_color_hex(0xFFFFFF), 0);
+    lv_label_set_text(next_label, "下一个 " LV_SYMBOL_RIGHT);
+    lv_obj_set_style_text_color(next_label, COLOR_TEXT, 0);
+    lv_obj_set_style_text_font(next_label, FONT_SM, 0);
     lv_obj_center(next_label);
 
     anim_timer = lv_timer_create(anim_timer_cb, 150, NULL);
@@ -406,7 +416,7 @@ void pet_ui_set_state(PetAnimState state) {
     current_frame = 1;
     const PetAnimConfig *cfg = pet_anim_get_config(state);
     if (cfg && state_label) {
-        lv_label_set_text_fmt(state_label, "State: %s", cfg->name);
+        lv_label_set_text_fmt(state_label, "状态: %s", cfg->name);
         if (anim_timer) {
             lv_timer_set_period(anim_timer, cfg->interval_ms);
             lv_timer_reset(anim_timer);
