@@ -13,7 +13,6 @@ typedef enum {
     CMD_CHAT,       // legacy; no longer enqueued
     CMD_CLEAR,      // {"type":"cmd","action":"clear"}
     CMD_PROGRESS,   // legacy; no longer enqueued
-    CMD_PETDEX,     // {"type":"petdex","state":"..."}
     CMD_UPLOAD,     // {"type":"upload","size":123456}
     CMD_UNKNOWN
 } CmdType;

@@ -1,6 +1,8 @@
 /**
  * @file lv_conf.h
  * LVGL 配置文件 - 匹配官方 ESP32-S3-LCD-1.9 示例
+ * 注意：本工程 LVGL 以 Kconfig 为准（CONFIG_LV_CONF_SKIP=y），本文件不参与编译。
+ *       字体配置见 sdkconfig.defaults 与 main/ui/buddy/buddy_theme.h。
  */
 
 #ifndef LV_CONF_H
@@ -39,7 +41,12 @@
 #define LV_FONT_MONTSERRAT_14 1
 #define LV_FONT_MONTSERRAT_16 1
 
-#define LV_FONT_DEFAULT &lv_font_montserrat_16
+/* 中文字体（由 tools/generate_font.py 生成） */
+extern const lv_font_t lv_font_sc_12;
+extern const lv_font_t lv_font_sc_14;
+extern const lv_font_t lv_font_sc_20;
+
+#define LV_FONT_DEFAULT &lv_font_sc_14
 
 /* 启用 UTF-8 支持 */
 #define LV_TXT_ENC LV_TXT_ENC_UTF8

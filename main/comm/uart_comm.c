@@ -6,7 +6,6 @@
 #include <errno.h>
 #include "wifi_manager.h"
 #include "tcp_server.h"
-#include "ui/pet_ui.h"
 #include "display/lv_port_disp.h"
 #include "buddy/buddy_state.h"
 #ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
@@ -25,17 +24,16 @@ static comm_upload_done_cb_t s_upload_done_cb = NULL;
 
 #define RX_BUF_SIZE     512
 
-/* 非阻塞控制台输出: USB 未连接主机时 printf 会因 TX 缓冲满而永久阻塞,
- * WiFi 场景下不能依赖控制台输出. 缓冲满时丢弃而非阻塞.
- * 注意: 本固件控制台走 ROM CDC (esp_usb_cdc_rom_console), usb_serial_jtag
- * 驱动未安装, 首次探测失败后静默跳过, 避免每次调用刷错误日志. */
-static bool s_comm_console_ready = true;
-
 static void comm_console_write_len(const char *s, size_t len) {
-    /* 设备→主机命令 (审批结果/事件/xack) 同时回传当前 TCP 客户端
-     * (WiFi/TCP 场景下 USB 串口不可用, 否则审批回复会丢失) */
+    /* 设备→主机命令 (事件/xack/状态) 同时回传当前 TCP 客户端
+     * (WiFi/TCP 场景下 USB 串口不可用, 否则回包会丢失) */
     tcp_server_send(s, len);
 #ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+    /* 非阻塞控制台输出: USB 未连接主机时 printf 会因 TX 缓冲满而永久阻塞,
+     * WiFi 场景下不能依赖控制台输出. 缓冲满时丢弃而非阻塞.
+     * 注意: 本固件控制台走 ROM CDC (esp_usb_cdc_rom_console), usb_serial_jtag
+     * 驱动未安装, 首次探测失败后静默跳过, 避免每次调用刷错误日志. */
+    static bool s_comm_console_ready = true;
     if (!s_comm_console_ready) return;
     size_t sent = 0;
     while (sent < len) {
@@ -81,13 +79,6 @@ static void comm_finish_upload(void) {
     /* 文件已落盘, 先通知 TCP 立即回传 finished (避免被后续刷新/打印阻塞拖住) */
     if (s_upload_done_cb) s_upload_done_cb();
 
-    /* 刷新 UI 缓存 (加超时, 拿不到锁则跳过刷新, 不能阻塞上传流程) */
-    if (lv_port_disp_lock(500)) {
-        pet_ui_refresh();
-        pet_ui_show(true);  /* 上传完成后直接展示新精灵图 */
-        lv_port_disp_unlock();
-    }
-
     uart_send_event("upload", "finished");
 }
 
@@ -106,12 +97,12 @@ bool comm_start_upload(const char *path, uint32_t size) {
             /* 绝对路径：直接使用 */
             strncpy(target_path, path, sizeof(target_path) - 1);
         } else {
-            /* 相对路径：自动补全宠物动画根目录 */
-            snprintf(target_path, sizeof(target_path), "/spiffs/sprites/%s", path);
+            /* 相对路径：自动补全到 /spiffs/ 根目录 */
+            snprintf(target_path, sizeof(target_path), "/spiffs/%s", path);
         }
     } else {
-        /* 默认路径：精灵图 */
-        strncpy(target_path, "/spiffs/sprite.png", sizeof(target_path) - 1);
+        /* 默认路径：通用上传文件（图片播放已移除） */
+        strncpy(target_path, "/spiffs/upload.bin", sizeof(target_path) - 1);
     }
 
     s_upload_file = fopen(target_path, "wb");
@@ -185,7 +176,6 @@ void comm_parse_cmd(const char *line) {
 
     cJSON *type = cJSON_GetObjectItem(root, "type");
     if (cJSON_IsString(type)) {
-        UartCmd cmd = {0};
         if (strcmp(type->valuestring, "status") == 0) {
             /* 遗留 status 不再入命令队列；Buddy JSON 仍由下方 buddy_feed_usb_line 处理 */
             ESP_LOGI(TAG, "legacy status ignored (not enqueued); use Buddy JSON");
@@ -202,18 +192,14 @@ void comm_parse_cmd(const char *line) {
                 comm_start_upload(cJSON_IsString(path) ? path->valuestring : NULL, size->valueint);
             }
         } else if (strcmp(type->valuestring, "petdex") == 0) {
-            cJSON *state = cJSON_GetObjectItem(root, "state");
-            if (cJSON_IsString(state)) {
-                cmd.type = CMD_PETDEX;
-                strncpy(cmd.state, state->valuestring, sizeof(cmd.state) - 1);
-                xQueueSend(cmdQueue, &cmd, 0);
-            }
+            /* 图片播放已移除：petdex 命令不再处理 */
+            ESP_LOGI(TAG, "petdex ignored (image playback removed)");
         }
     }
     /* 同时传递给 buddy_state 处理（权限、时间同步等）。
      * 注意: linebuf_feed 以 '\n' 作为行结束触发 apply_json, 而这里收到的
      * 是已去掉换行的完整行, 必须补一个 '\n' 才能让状态机真正解析,
-     * 否则 session/prompt/time 等数据只会堆积在行缓冲里, connected 恒为 false。 */
+     * 否则 session/time 等数据只会堆积在行缓冲里, connected 恒为 false。 */
     buddy_feed_usb_line(line, strlen(line));
     buddy_feed_usb_line("\n", 1);
     cJSON_Delete(root);

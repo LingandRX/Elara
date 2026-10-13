@@ -18,7 +18,6 @@ extern "C" {
 /* ============ 显示模式 ============ */
 typedef enum {
     BUDDY_MODE_NORMAL = 0,
-    BUDDY_MODE_PET,
     BUDDY_MODE_INFO,
     BUDDY_MODE_MAX
 } BuddyMode;
@@ -26,41 +25,27 @@ typedef enum {
 /* ============ Info 页面索引 ============ */
 typedef enum {
     INFO_PAGE_ABOUT = 0,
-    INFO_PAGE_BUTTONS,
-    INFO_PAGE_SESSION,
-    INFO_PAGE_DEVICE,
-    INFO_PAGE_NETWORK,
-    INFO_PAGE_BATTERY,
-    INFO_PAGE_CREDITS,
     INFO_PAGE_MAX
 } InfoPageIdx;
 
 /* ============ 菜单项 ============ */
 typedef enum {
-    BUDDY_MENU_SETTINGS = 0,
-    BUDDY_MENU_WIFI,
-    BUDDY_MENU_PETDEX,
-    BUDDY_MENU_SHUTDOWN,
-    BUDDY_MENU_HELP,
+    BUDDY_MENU_WIFI = 0,
+    BUDDY_MENU_SETTINGS,
     BUDDY_MENU_ABOUT,
-    BUDDY_MENU_DEMO,
-    BUDDY_MENU_CLOSE,
+    BUDDY_MENU_SHUTDOWN,
     BUDDY_MENU_MAX
 } BuddyMenuItem;
 
 /* ============ 设置项 ============ */
 typedef enum {
     BUDDY_SET_BRIGHTNESS = 0,
-    BUDDY_SET_SOUND,
-    BUDDY_SET_WIFI,
-    BUDDY_SET_LED,
-    BUDDY_SET_HUD,
+    BUDDY_SET_INFO_PANEL,   /* 信息面板开关（原 HUD） */
     BUDDY_SET_ROTATE,
-    BUDDY_SET_ASCII,      /* 宠物物种 */
-    BUDDY_SET_PET_MODE,   /* 宠物展示模式: ASCII pet / 动画 pet */
+    BUDDY_SET_WIFI,
+    BUDDY_SET_SOUND,
     BUDDY_SET_AUTO_SLEEP,
     BUDDY_SET_RESET,
-    BUDDY_SET_BACK,
     BUDDY_SET_MAX
 } BuddySettingItem;
 
@@ -73,16 +58,15 @@ typedef void (*BuddyMenuActionCb)(BuddyMenuItem item);
 /* 设置项点击动作回调（触摸点击设置项时触发，用于执行对应动作） */
 typedef void (*BuddySettingActionCb)(BuddySettingItem item);
 
-/* 审批按钮点击动作回调（触摸点击审批按钮时触发；approve=true 批准 / false 拒绝） */
-typedef void (*BuddyApprovalActionCb)(bool approve);
+/* 恢复出厂确认回调（用户点「确认」时触发） */
+typedef void (*BuddyResetConfirmCb)(void);
 
 /**
  * 注册覆盖层点击外部时的关闭回调
  * 用于同步 main.c 中的 BuddyUIState 状态
  */
 void buddy_ui_set_overlay_close_cb(BuddyOverlayCloseCb menu_cb,
-                                    BuddyOverlayCloseCb settings_cb,
-                                    BuddyOverlayCloseCb approval_cb);
+                                    BuddyOverlayCloseCb settings_cb);
 
 /**
  * 注册菜单项点击动作回调
@@ -97,12 +81,18 @@ void buddy_ui_set_menu_action_cb(BuddyMenuActionCb cb);
 void buddy_ui_set_settings_action_cb(BuddySettingActionCb cb);
 
 /**
- * 注册审批按钮点击动作回调
- * 触摸点击审批弹窗的 OK/NO 按钮时触发
+ * 注册恢复出厂确认回调
+ * 用户点「确认」时触发，由 main.c 执行实际擦除与重启
  */
-void buddy_ui_set_approval_action_cb(BuddyApprovalActionCb cb);
+void buddy_ui_set_reset_confirm_cb(BuddyResetConfirmCb cb);
 
 /* ============ 初始化与显示 ============ */
+
+/**
+ * 处理触摸滑动（由 lvgl_touch 驱动层回调）
+ * @param dir 滑动方向
+ */
+void buddy_ui_handle_swipe(lv_dir_t dir);
 
 /**
  * 初始化 Buddy UI
@@ -144,44 +134,10 @@ BuddyMode buddy_ui_get_mode(void);
 /* ============ 主页 (NORMAL) ============ */
 
 /**
- * 设置 HUD 文本
- * @param text 文本内容
+ * 更新主界面 Persona 状态词与心情指示
+ * @param persona_state PersonaState 枚举值
  */
-void buddy_ui_set_hud_text(const char *text);
-
-/**
- * 显示/隐藏 HUD
- * @param visible 是否可见
- */
-void buddy_ui_set_hud_visible(bool visible);
-
-/**
- * 显示审批弹窗
- * @param tool_name 工具名
- * @param prompt 提示文本
- */
-void buddy_ui_show_approval(const char *tool_name, const char *prompt);
-
-/**
- * 隐藏审批弹窗
- */
-void buddy_ui_hide_approval(void);
-
-/**
- * 判断审批弹窗是否显示
- * @return true=显示中
- */
-bool buddy_ui_is_approval_visible(void);
-
-/* ============ PET 页面 ============ */
-
-/**
- * 设置套餐用量显示
- * @param rolling  滚动窗口用量 (0-100)
- * @param weekly   每周用量 (0-100)
- * @param monthly  每月用量 (0-100)
- */
-void buddy_ui_set_usage(int rolling, int weekly, int monthly);
+void buddy_ui_set_persona(uint8_t persona_state);
 
 /* ============ INFO 页面 ============ */
 
@@ -190,16 +146,6 @@ void buddy_ui_set_usage(int rolling, int weekly, int monthly);
  * @param page 页面索引
  */
 void buddy_ui_set_info_page(InfoPageIdx page);
-
-/**
- * 切换到下一页 Info
- */
-void buddy_ui_info_next(void);
-
-/**
- * 切换到上一页 Info
- */
-void buddy_ui_info_prev(void);
 
 /**
  * 获取当前 Info 页面索引
@@ -233,6 +179,19 @@ void buddy_ui_menu_select(BuddyMenuItem item);
  */
 BuddyMenuItem buddy_ui_get_menu_selected(void);
 
+/* ============ 恢复出厂确认弹窗 ============ */
+
+/**
+ * 显示/隐藏「恢复出厂」确认弹窗
+ * @param show 是否显示
+ */
+void buddy_ui_show_reset_confirm(bool show);
+
+/**
+ * 查询确认弹窗是否可见
+ */
+bool buddy_ui_is_reset_confirm_visible(void);
+
 /* ============ 设置 ============ */
 
 /**
@@ -261,42 +220,16 @@ void buddy_ui_settings_select(BuddySettingItem item);
 void buddy_ui_settings_set_toggle(BuddySettingItem item, bool on);
 
 /**
- * 更新宠物物种显示（BUDDY_SET_ASCII 项：切换宠物角色而非开关）
- * @param name 物种名称（如 "cat"、"capybara"）
- */
-void buddy_ui_settings_set_species(const char *name);
-
-/**
  * 更新亮度设置显示
  * @param pct 亮度百分比 (0-100)
  */
 void buddy_ui_settings_set_brightness(int pct);
 
 /**
- * 更新宠物展示模式设置显示（BUDDY_SET_PET_MODE 项：切换展示模式而非开关）
- * @param animated true=动画 pet, false=ASCII pet
+ * 更新「旋转」设置显示（0/90/180 度）
+ * @param rot 0=0°, 1=90°, 2=180°
  */
-void buddy_ui_settings_set_pet_mode(bool animated);
-
-/* ============ 宠物展示模式 ============ */
-
-/**
- * 切换主页宠物展示模式（ASCII pet ↔ 动画 pet）
- * @param animated true=动画 pet, false=ASCII pet
- */
-void buddy_ui_set_pet_mode(bool animated);
-
-/**
- * 查询当前主页宠物是否为动画 pet 模式
- * @return true=动画 pet, false=ASCII pet
- */
-bool buddy_ui_is_pet_animated(void);
-
-/**
- * 同步 Persona 状态到动画 pet（用于驱动精灵图动画）
- * @param persona_state 7 种 Persona 状态 (PersonaState)
- */
-void buddy_ui_anim_set_persona(uint8_t persona_state);
+void buddy_ui_settings_set_rotate(uint8_t rot);
 
 /* ============ 时钟 ============ */
 

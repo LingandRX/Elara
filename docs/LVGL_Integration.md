@@ -13,8 +13,7 @@ main/
 ├── input/
 │   └── lvgl_touch.c/h        # LVGL 触摸适配（CST816T）
 ├── ui/
-│   ├── buddy/                # Buddy 主界面（当前主路径）
-│   ├── pet_ui.c / pet_anim.c # Petdex 动画页
+│   ├── buddy/                # Buddy 主界面 + ASCII 角色动画（当前主路径）
 │   ├── wifi_ui.c             # WiFi 管理页
 │   ├── lvgl_chat_ui.c/h      # 遗留聊天 UI（当前未加入 CMake 链接）
 │   └── lvgl_widgets.c/h      # 自定义控件
@@ -41,9 +40,10 @@ lv_port_disp_init();
 lvgl_touch_init();
 ```
 
-### Buddy / Petdex
+### Buddy / ASCII 动画
 
-主路径为 Buddy 状态机 UI（`buddy_ui_*`）与 Petdex（`pet_ui_*`），而非遗留 `lvgl_chat_ui_*`。
+主路径为 Buddy 状态机 UI（`buddy_ui_*`）与 ASCII 角色动画（`buddy_anim_*`）。
+图片/精灵图播放（Petdex）已移除，主页统一使用字符画渲染。
 
 ## LVGL 配置要点
 

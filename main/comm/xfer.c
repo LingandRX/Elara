@@ -95,11 +95,10 @@ bool xfer_command(cJSON *doc) {
         int len = snprintf(b, sizeof(b),
             "{\"ack\":\"status\",\"ok\":true,\"n\":0,\"data\":{"
             "\"name\":\"%s\",\"owner\":\"%s\",\"sec\":%s,"
-            "\"stats\":{\"appr\":%u,\"deny\":%u,\"vel\":%u,\"nap\":%lu,\"lvl\":%u}"
+            "\"stats\":{\"nap\":%lu,\"lvl\":%u}"
             "}}\n",
             pet_name_get(), owner_name_get(),
             "false",
-            st->approvals, st->denials, buddy_stats_median_velocity(),
             (unsigned long)st->nap_seconds, st->level
         );
         uart_send_raw(b, len);
@@ -123,8 +122,7 @@ bool xfer_command(cJSON *doc) {
     }
 
     if (!s_x_active) {
-        /* permission 命令不是传输命令 */
-        return strcmp(cmd, "permission") != 0;
+        return true;
     }
 
     if (strcmp(cmd, "file") == 0) {

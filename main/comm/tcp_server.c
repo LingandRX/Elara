@@ -18,7 +18,7 @@ static char s_addr_str[128];
 /* 当前进行 TCP 上传的连接 socket (用于 upload 完成回调回传 finished) */
 static int s_upload_sock = -1;
 
-/* 当前 TCP 客户端连接 (设备→主机回传, 如审批结果/事件) */
+/* 当前 TCP 客户端连接 (设备→主机回传, 如事件/上传应答) */
 static int s_client_sock = -1;
 
 static int send_all(int sock, const char *data, size_t len) {

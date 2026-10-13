@@ -23,8 +23,8 @@
 #include "display/backlight_manager.h"
 #include "input/lvgl_touch.h"
 #include "ui/buddy/buddy_ui.h"
+#include "ui/buddy/buddy_drawer.h"
 #include "ui/buddy/buddy_anim.h"
-#include "ui/pet_ui.h"
 #include "ui/wifi_ui.h"
 #include "comm/uart_comm.h"
 #include "comm/tcp_server.h"
@@ -47,13 +47,11 @@ static QueueHandle_t cmdQueue;
 
 /* 运行状态 */
 static uint32_t s_tick = 0;
-static uint32_t s_welcome_until_ms = 0;
 
 /* 常量 */
 #define PLAYFUL_MS          (3UL * 60UL * 1000UL)
 #define SCREEN_OFF_MS       (30UL * 1000UL)
 #define CLOCK_OFF_MS_BAT    (5UL * 60UL * 1000UL)
-#define SPECIES_GIF         0xFF
 
 /* SPI 颜色传输完成回调 */
 static bool on_color_trans_done(esp_lcd_panel_io_handle_t panel_io,
@@ -120,12 +118,6 @@ static void wake(void) {
     }
 }
 
-/* 发送命令到上位机 */
-static void send_cmd(const char *json) {
-    uart_send_raw(json, strlen(json));
-    uart_send_raw("\n", 1);
-}
-
 /* 提示音（禁用，因为没有音频硬件） */
 static void beep(uint16_t freq, uint16_t dur) {
     (void)freq;
@@ -141,7 +133,10 @@ static void update_clock(void) {
     }
     int h = 0, m = 0, s = 0;
     if (buddy_get_local_time(&h, &m, &s, NULL, NULL, NULL, NULL)) {
-        buddy_ui_set_clock(h, m, s);
+        if (lv_port_disp_lock(50)) {
+            buddy_ui_set_clock(h, m, s);
+            lv_port_disp_unlock();
+        }
     }
 }
 
@@ -165,15 +160,9 @@ static void cmd_process_task(void *pvParam) {
     UartCmd cmd;
     while (1) {
         if (xQueueReceive(cmdQueue, &cmd, pdMS_TO_TICKS(100)) == pdTRUE) {
-            /* 仅处理 PETDEX。CMD_STATUS/CMD_CHAT/CMD_PROGRESS 故意不处理：
-             * 遗留类型已在 comm_parse_cmd 中不再入队，改走 Buddy JSON。 */
-            if (cmd.type == CMD_PETDEX) {
-                if (lv_port_disp_lock(-1)) {
-                    pet_ui_set_state_by_name(cmd.state);
-                    pet_ui_show(true);
-                    lv_port_disp_unlock();
-                }
-            }
+            /* 图片播放（Petdex）已移除：不再有需要分发的遗留命令类型。
+             * 保留队列消费，避免发送方阻塞。 */
+            (void)cmd;
         }
     }
 }
@@ -222,34 +211,6 @@ static void buddy_main_loop(void) {
     /* 5. One-shot 超时 */
     if ((int32_t)(now_ms - rt->oneshot_until_ms) >= 0) {
         rt->active_state = rt->base_state;
-    }
-
-    /* 6. 新审批提示到达 */
-    if (strcmp(session->prompt_id, rt->last_prompt_id) != 0) {
-        strncpy(rt->last_prompt_id, session->prompt_id, sizeof(rt->last_prompt_id) - 1);
-        rt->last_prompt_id[sizeof(rt->last_prompt_id) - 1] = '\0';
-        rt->response_sent = false;
-        if (session->prompt_id[0]) {
-            rt->prompt_arrived_ms = now_ms;
-            wake();
-            beep(1200, 80);
-            ui->display_mode = DISP_NORMAL;
-            ui->menu_open = false;
-            ui->settings_open = false;
-            ui->reset_open = false;
-            buddy_ui_hide_approval();
-            buddy_ui_show_approval(session->prompt_tool, session->prompt_hint);
-        } else if (!rt->response_sent) {
-            /* 审批被撤销 */
-            buddy_ui_hide_approval();
-        }
-    }
-
-    /* 7. 处理审批计时 */
-    bool in_prompt = session->prompt_id[0] && !rt->response_sent;
-    if (in_prompt && !buddy_ui_is_approval_visible()) {
-        /* 确保审批界面显示 */
-        buddy_ui_show_approval(session->prompt_tool, session->prompt_hint);
     }
 
     /* 8. 推导 clocking 状态：仅在曾连接上位机但当前不在线时作为纯时钟；
@@ -301,24 +262,13 @@ static void buddy_main_loop(void) {
     }
 
     /* 12. 渲染更新（仅在主界面显示时才进行 Buddy 动画渲染，避免全屏子页面打开时 CPU 争抢） */
-    if (!rt->napping && !rt->screen_off && !pet_ui_is_visible() && !wifi_ui_is_visible()) {
+    if (!rt->napping && !rt->screen_off && !wifi_ui_is_visible()) {
         if (lv_port_disp_lock(50)) {
             /* 更新动画 pet（精灵图）状态 */
-            buddy_ui_anim_set_persona(rt->active_state);
-            /* ASCII pet 动画：动画 pet 模式下隐藏, 跳过绘制 */
-            if (!buddy_ui_is_pet_animated()) {
-                buddy_anim_tick(rt->active_state, s_tick);
-            }
+            buddy_ui_set_persona((uint8_t)rt->active_state);
+            /* ASCII 角色动画（图片播放已移除） */
+            buddy_anim_tick(rt->active_state, s_tick);
             buddy_ui_anim_tick(s_tick);
-
-            /* 更新 HUD（欢迎消息期间不覆盖） */
-            if ((int32_t)(now_ms - s_welcome_until_ms) >= 0) {
-                if (session->n_lines > 0) {
-                    buddy_ui_set_hud_text(session->lines[session->n_lines - 1]);
-                } else {
-                    buddy_ui_set_hud_text(session->msg);
-                }
-            }
 
             /* 更新顶部 WiFi 连接标识（含信号强弱，需在 LVGL 锁内操作 UI） */
             {
@@ -326,19 +276,13 @@ static void buddy_main_loop(void) {
                 buddy_ui_set_wifi(wset->wifi, wifi_manager_get_signal_level());
             }
 
-            /* 更新 PET 用量显示 (套餐 rolling/weekly/monthly) */
-            int ur = (session->usage_rolling == 0xFF) ? 0 : session->usage_rolling;
-            int uw = (session->usage_weekly == 0xFF) ? 0 : session->usage_weekly;
-            int um = (session->usage_monthly == 0xFF) ? 0 : session->usage_monthly;
-            buddy_ui_set_usage(ur, uw, um);
-
             lv_port_disp_unlock();
         }
     }
 
     /* 12. 自动休眠（简化：无 IMU，仅基于超时） */
     BuddySettings *settings = buddy_settings_get();
-    if (settings->auto_sleep && !rt->screen_off && !in_prompt) {
+    if (settings->auto_sleep && !rt->screen_off) {
         uint32_t idle_ms = now_ms - rt->last_interact_ms;
         uint32_t threshold = clocking ? CLOCK_OFF_MS_BAT : SCREEN_OFF_MS;
         if (idle_ms > threshold) {
@@ -351,9 +295,8 @@ static void buddy_main_loop(void) {
     uint32_t loop_ms;
     if (rt->screen_off) {
         loop_ms = 200;
-    } else if (rt->napping || in_prompt || ui->menu_open ||
+    } else if (rt->napping || ui->menu_open ||
                ui->settings_open || ui->reset_open || wifi_ui_is_visible() ||
-               pet_ui_is_visible() ||
                (int32_t)(now_ms - rt->oneshot_until_ms) < 0) {
         loop_ms = 16;
     } else {
@@ -382,19 +325,20 @@ static void execute_menu_action(BuddyMenuItem item) {
     buddy_ui_show_menu(false);
 
     switch (item) {
+    case BUDDY_MENU_WIFI:
+        wifi_ui_show(true);
+        break;
     case BUDDY_MENU_SETTINGS:
         ui->settings_open = true;
         ui->settings_sel = 0;
         buddy_ui_show_settings(true);
         buddy_ui_settings_select(BUDDY_SET_BRIGHTNESS);
         break;
-    case BUDDY_MENU_WIFI:
-        /* WiFi 管理页面（独立全屏页，BOOT 键返回） */
-        wifi_ui_show(true);
-        break;
-    case BUDDY_MENU_PETDEX:
-        /* Petdex 动画展示页面（独立全屏页，BOOT 键返回） */
-        pet_ui_show(true);
+    case BUDDY_MENU_ABOUT:
+        ui->display_mode = DISP_INFO;
+        ui->info_page = INFO_PAGE_ABOUT;
+        buddy_ui_set_mode(BUDDY_MODE_INFO);
+        buddy_ui_set_info_page(INFO_PAGE_ABOUT);
         break;
     case BUDDY_MENU_SHUTDOWN:
         ESP_LOGI(TAG, "Shutdown requested");
@@ -403,23 +347,6 @@ static void execute_menu_action(BuddyMenuItem item) {
         esp_sleep_enable_ext0_wakeup(BOOT_KEY_PIN, 0);
         esp_deep_sleep_start();
         break;
-    case BUDDY_MENU_HELP:
-        buddy_ui_set_hud_text("Short=nav  Long=back");
-        buddy_ui_set_hud_visible(true);
-        break;
-    case BUDDY_MENU_ABOUT:
-        ui->display_mode = DISP_INFO;
-        ui->info_page = INFO_PAGE_ABOUT;
-        buddy_ui_set_mode(BUDDY_MODE_INFO);
-        buddy_ui_set_info_page(INFO_PAGE_ABOUT);
-        break;
-    case BUDDY_MENU_DEMO:
-        buddy_set_demo(!buddy_is_demo());
-        buddy_ui_set_hud_text(buddy_is_demo() ? "Demo ON" : "Demo OFF");
-        buddy_ui_set_hud_visible(true);
-        buddy_anim_invalidate();
-        break;
-    case BUDDY_MENU_CLOSE:
     default:
         buddy_anim_invalidate();
         break;
@@ -448,12 +375,19 @@ static void execute_settings_action(BuddySettingItem item) {
         beep(1800, 30);
         break;
     }
-    case BUDDY_SET_SOUND: {
+    case BUDDY_SET_INFO_PANEL: {
         BuddySettings *set = buddy_settings_get();
-        set->sound = !set->sound;
-        buddy_ui_settings_set_toggle(BUDDY_SET_SOUND, set->sound);
-        if (set->sound) beep(2000, 50);
+        set->hud = !set->hud;                 /* 复用 hud 字段作为信息面板开关 */
+        buddy_ui_settings_set_toggle(BUDDY_SET_INFO_PANEL, set->hud);
         buddy_settings_save();
+        break;
+    }
+    case BUDDY_SET_ROTATE: {
+        BuddySettings *set = buddy_settings_get();
+        set->clock_rot = (set->clock_rot + 1) % 3;
+        buddy_ui_settings_set_rotate(set->clock_rot);
+        buddy_settings_save();
+        beep(1800, 30);
         break;
     }
     case BUDDY_SET_WIFI: {
@@ -461,52 +395,15 @@ static void execute_settings_action(BuddySettingItem item) {
         set->wifi = !set->wifi;
         buddy_ui_settings_set_toggle(BUDDY_SET_WIFI, set->wifi);
         buddy_settings_save();
-        /* 立即启停 Wi-Fi */
         wifi_manager_set_enabled(set->wifi);
         break;
     }
-    case BUDDY_SET_LED: {
+    case BUDDY_SET_SOUND: {
         BuddySettings *set = buddy_settings_get();
-        set->led = !set->led;
-        buddy_ui_settings_set_toggle(BUDDY_SET_LED, set->led);
+        set->sound = !set->sound;
+        buddy_ui_settings_set_toggle(BUDDY_SET_SOUND, set->sound);
+        if (set->sound) beep(2000, 50);
         buddy_settings_save();
-        break;
-    }
-    case BUDDY_SET_HUD: {
-        BuddySettings *set = buddy_settings_get();
-        set->hud = !set->hud;
-        buddy_ui_settings_set_toggle(BUDDY_SET_HUD, set->hud);
-        buddy_ui_set_hud_visible(set->hud);
-        buddy_settings_save();
-        break;
-    }
-    case BUDDY_SET_ROTATE: {
-        BuddySettings *set = buddy_settings_get();
-        set->clock_rot = (set->clock_rot + 1) % 3;
-        buddy_settings_save();
-        beep(1800, 30);
-        break;
-    }
-    case BUDDY_SET_ASCII: {
-        /* 切换宠物物种（不是开关）：循环切换到下一个角色并持久化到 NVS */
-        ui->buddy_mode = true;               /* 物种角色使用 ASCII 渲染 */
-        buddy_anim_next_species();
-        buddy_anim_invalidate();
-        species_idx_save(buddy_anim_get_species_idx());
-        buddy_ui_settings_set_species(buddy_anim_get_species_name());
-        beep(1800, 30);
-        break;
-    }
-    case BUDDY_SET_PET_MODE: {
-        /* 宠物展示模式：ASCII pet ↔ 动画 pet (精灵图)，持久化到 NVS */
-        BuddySettings *set = buddy_settings_get();
-        set->pet_mode = !set->pet_mode;
-        buddy_settings_save();
-        ui->buddy_mode = !set->pet_mode;     /* 动画 pet 时非 ASCII 渲染 */
-        buddy_ui_settings_set_pet_mode(set->pet_mode);
-        buddy_ui_set_pet_mode(set->pet_mode);
-        buddy_anim_invalidate();
-        beep(1800, 30);
         break;
     }
     case BUDDY_SET_AUTO_SLEEP: {
@@ -518,65 +415,30 @@ static void execute_settings_action(BuddySettingItem item) {
         break;
     }
     case BUDDY_SET_RESET: {
-        ui->settings_open = false;
-        buddy_ui_show_settings(false);
+        /* 弹出确认弹窗（见设计文档 §5.4） */
         ui->reset_open = true;
-        ui->reset_sel = 0;
-        ui->reset_confirm_idx = 0xFF;
+        buddy_ui_show_reset_confirm(true);
         break;
     }
-    case BUDDY_SET_BACK: {
-        ui->settings_open = false;
-        buddy_ui_show_settings(false);
-        buddy_anim_invalidate();
+    default:
         break;
-    }
-    default: break;
     }
 }
 
 /* 触摸点击设置项回调（运行于 LVGL 锁内） */
+/* 恢复出厂确认（用户在弹窗点「确认」时执行） */
+static void on_reset_confirm(void) {
+    ESP_LOGW(TAG, "Factory reset confirmed");
+    buddy_stats_factory_reset();
+    esp_restart();
+}
+
 static void on_settings_action(BuddySettingItem item) {
     BuddyUIState *ui = buddy_get_ui_state();
     /* 同步选中状态，保持与物理按键导航一致 */
     ui->settings_sel = (uint8_t)item;
     /* LVGL 事件回调已持有 LVGL 锁，直接执行动作 */
     execute_settings_action(item);
-}
-
-/* 执行审批动作（批准/拒绝）
- * 由 BOOT 键（短按=批准 / 长按=拒绝）和触摸点击审批按钮共同触发 */
-static void execute_approval_action(bool approve) {
-    BuddyRuntime *rt = buddy_get_runtime();
-    if (!buddy_has_pending_prompt()) {
-        /* 无待审批项，仅关闭弹窗 */
-        buddy_ui_hide_approval();
-        return;
-    }
-    char cmd[96];
-    snprintf(cmd, sizeof(cmd),
-             "{\"cmd\":\"permission\",\"id\":\"%s\",\"decision\":\"%s\"}",
-             buddy_get_session_state()->prompt_id, approve ? "once" : "deny");
-    send_cmd(cmd);
-    rt->response_sent = true;
-    if (approve) {
-        uint32_t now_ms = esp_timer_get_time() / 1000;
-        uint32_t took_s = (now_ms - rt->prompt_arrived_ms) / 1000;
-        buddy_stats_on_approval(took_s);
-        beep(2400, 60);
-        if (took_s < 5) buddy_trigger_oneshot(PERSONA_HEART, 2000);
-    } else {
-        buddy_stats_on_denial();
-        beep(1000, 80);
-        buddy_trigger_oneshot(PERSONA_DIZZY, 2000);
-    }
-    buddy_ui_hide_approval();
-}
-
-/* 触摸点击审批按钮回调（运行于 LVGL 锁内） */
-static void on_approval_action(bool approve) {
-    /* LVGL 事件回调已持有 LVGL 锁，直接执行动作 */
-    execute_approval_action(approve);
 }
 
 static void process_boot_key(void) {
@@ -598,15 +460,6 @@ static void process_boot_key(void) {
         uint32_t press_dur = now_ms - bk_press_start_ms;
         ESP_LOGI(TAG, "BOOT key released, dur=%lu ms", press_dur);
 
-        /* Petdex 页面: 按 BOOT 返回主界面 */
-        if (pet_ui_is_visible()) {
-            if (lv_port_disp_lock(-1)) {
-                pet_ui_show(false);
-                lv_port_disp_unlock();
-            }
-            return;
-        }
-
         /* WiFi 管理页面: 按 BOOT 返回主界面 */
         if (wifi_ui_is_visible()) {
             if (lv_port_disp_lock(-1)) {
@@ -619,18 +472,26 @@ static void process_boot_key(void) {
         if (rt->swallow_btn_a) {
             rt->swallow_btn_a = false;
         } else if (press_dur >= 600) {
-            /* 长按 */
-            beep(800, 60);
-            if (buddy_has_pending_prompt()) {
+            if (buddy_drawer_is_open()) {
                 if (lv_port_disp_lock(-1)) {
-                    execute_approval_action(false);
+                    buddy_drawer_close();
                     lv_port_disp_unlock();
                 }
-            } else if (ui->reset_open) {
+                return;
+            }
+            /* 长按 */
+            beep(800, 60);
+            if (ui->reset_open) {
+                /* 长按确认：执行恢复出厂并重启 */
                 ui->reset_open = false;
+                buddy_ui_show_reset_confirm(false);
+                on_reset_confirm();
             } else if (ui->settings_open) {
+                /* 长按 = 返回上一层（见设计文档 §4.2） */
                 if (lv_port_disp_lock(-1)) {
-                    execute_settings_action((BuddySettingItem)ui->settings_sel);
+                    ui->settings_open = false;
+                    buddy_ui_show_settings(false);
+                    buddy_anim_invalidate();
                     lv_port_disp_unlock();
                 }
             } else if (ui->menu_open) {
@@ -649,16 +510,27 @@ static void process_boot_key(void) {
                 }
             }
         } else {
-            /* 短按 */
-            beep(1800, 30);
-            if (buddy_has_pending_prompt()) {
+            if (buddy_drawer_is_open()) {
                 if (lv_port_disp_lock(-1)) {
-                    execute_approval_action(true);
+                    buddy_drawer_close();
                     lv_port_disp_unlock();
                 }
-            } else if (ui->reset_open) {
-                ui->reset_sel = (ui->reset_sel + 1) % 3;
-                ui->reset_confirm_idx = 0xFF;
+                return;
+            }
+            /* 短按 */
+            beep(1800, 30);
+            if (ui->display_mode == DISP_INFO) {
+                if (lv_port_disp_lock(-1)) {
+                    ui->display_mode = DISP_NORMAL;
+                    buddy_ui_set_mode(BUDDY_MODE_NORMAL);
+                    buddy_anim_invalidate();
+                    lv_port_disp_unlock();
+                }
+                return;
+            }
+            if (ui->reset_open) {
+                ui->reset_open = false;   /* 短按取消恢复出厂 */
+                buddy_ui_show_reset_confirm(false);
             } else if (ui->settings_open) {
                 if (lv_port_disp_lock(-1)) {
                     ui->settings_sel = (ui->settings_sel + 1) % BUDDY_SET_MAX;
@@ -672,10 +544,9 @@ static void process_boot_key(void) {
                 }
             } else {
                 if (lv_port_disp_lock(-1)) {
-                    ui->display_mode = (ui->display_mode + 1) % DISP_COUNT;
-                    if (ui->display_mode == DISP_NORMAL) buddy_ui_set_mode(BUDDY_MODE_NORMAL);
-                    else if (ui->display_mode == DISP_PET) buddy_ui_set_mode(BUDDY_MODE_PET);
-                    else buddy_ui_set_mode(BUDDY_MODE_INFO);
+                    ui->menu_open = true;
+                    ui->menu_sel = 0;
+                    buddy_ui_show_menu(true);
                     lv_port_disp_unlock();
                 }
             }
@@ -693,12 +564,6 @@ static void on_menu_closed(void) {
 static void on_settings_closed(void) {
     BuddyUIState *ui = buddy_get_ui_state();
     ui->settings_open = false;
-}
-
-static void on_approval_closed(void) {
-    BuddyRuntime *rt = buddy_get_runtime();
-    rt->response_sent = true;
-    buddy_stats_on_denial();
 }
 
 void app_main(void) {
@@ -725,18 +590,14 @@ void app_main(void) {
 
     /* 3. 初始化 Buddy UI */
     buddy_ui_init();
-    buddy_ui_set_overlay_close_cb(on_menu_closed, on_settings_closed, on_approval_closed);
+    buddy_ui_set_overlay_close_cb(on_menu_closed, on_settings_closed);
     buddy_ui_set_menu_action_cb(on_menu_action);
     buddy_ui_set_settings_action_cb(on_settings_action);
-    buddy_ui_set_approval_action_cb(on_approval_action);
+    buddy_ui_set_reset_confirm_cb(on_reset_confirm);
     buddy_ui_show(true);
 
     /* 4. 初始化存储 */
     storage_init();
-    storage_init_pet_dirs();
-
-    /* 4.5 初始化 Petdex 动画页面 (需在 storage_init 之后) */
-    pet_ui_init();
 
     /* 4.6 初始化 WiFi 管理页面 (页面创建不依赖 wifi_manager，可先创建) */
     wifi_ui_init();
@@ -769,15 +630,11 @@ void app_main(void) {
 
     /* 8. 应用设置（同步到 UI 显示，与 NVS 配置保持一致） */
     BuddySettings *set = buddy_settings_get();
-    buddy_ui_settings_set_toggle(BUDDY_SET_SOUND, set->sound);
+    buddy_ui_settings_set_toggle(BUDDY_SET_INFO_PANEL, set->hud);
+    buddy_ui_settings_set_rotate(set->clock_rot);
     buddy_ui_settings_set_toggle(BUDDY_SET_WIFI, set->wifi);
-    buddy_ui_settings_set_toggle(BUDDY_SET_LED, set->led);
-    buddy_ui_settings_set_toggle(BUDDY_SET_HUD, set->hud);
+    buddy_ui_settings_set_toggle(BUDDY_SET_SOUND, set->sound);
     buddy_ui_settings_set_toggle(BUDDY_SET_AUTO_SLEEP, set->auto_sleep);
-
-    /* 8.3 宠物展示模式（ASCII pet / 动画 pet）同步到主页与设置显示 */
-    buddy_ui_settings_set_pet_mode(set->pet_mode);
-    buddy_ui_set_pet_mode(set->pet_mode);
 
     /* 8.5 启动 WiFi 与 TCP Server（上位机网络通信，根据设置决定是否启用 WiFi） */
     wifi_manager_init();
@@ -794,39 +651,17 @@ void app_main(void) {
     backlight_enable_auto_sleep(false, 0, 0);  /* 禁用，避免与 buddy_main_task 冲突 */
     backlight_set_on(true);
 
-    /* 11. 加载物种设置 */
+    /* 11. 加载物种设置（图片播放已移除，始终使用 ASCII 角色） */
     BuddyUIState *ui = buddy_get_ui_state();
     uint8_t species_idx = species_idx_load();
-    ui->buddy_mode = true;
-    if (species_idx == SPECIES_GIF) {
-        /* 检查是否有 GIF 角色 */
-        ui->buddy_mode = false;
-    } else {
-        buddy_anim_set_species_idx(species_idx % buddy_anim_get_species_count());
-    }
-    /* 同步设置菜单中的物种名显示 */
-    buddy_ui_settings_set_species(buddy_anim_get_species_name());
-
-    /* 12. 显示欢迎界面 */
-    if (lv_port_disp_lock(-1)) {
-        if (owner_name_get()[0]) {
-            char line[40];
-            snprintf(line, sizeof(line), "%s's", owner_name_get());
-            buddy_ui_set_hud_text(line);
-        } else {
-            buddy_ui_set_hud_text("Hello!");
-        }
-        buddy_ui_set_hud_visible(true);
-        lv_port_disp_unlock();
-    }
-    s_welcome_until_ms = esp_timer_get_time() / 1000 + 5000; /* 欢迎消息显示 5 秒 */
-
+    ui->buddy_mode = true;   /* 恒为 ASCII */
+    buddy_anim_set_species_idx(species_idx % buddy_anim_get_species_count());
     /* 14. 配置 BOOT 键 GPIO */
     gpio_reset_pin(BOOT_KEY_PIN);
     gpio_set_direction(BOOT_KEY_PIN, GPIO_MODE_INPUT);
     gpio_pullup_en(BOOT_KEY_PIN);
 
-    ESP_LOGI(TAG, "Buddy mode: %s", ui->buddy_mode ? "ASCII" : "GIF");
+    ESP_LOGI(TAG, "Buddy mode: ASCII (image playback removed)");
     ESP_LOGI(TAG, "Main loop starting (buddy+boot_key merged)");
 
     /* 15. 主循环（buddy_main_loop 内部已包含 boot_key + vTaskDelay） */

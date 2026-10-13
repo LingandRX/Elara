@@ -62,7 +62,7 @@ format:
 lint:
 	find main -name "*.c" -o -name "*.h" | xargs clang-format --dry-run --Werror
 
-# 生成字体
+# 生成中文字体（需要 node/npx）
 font:
 	python3 tools/generate_font.py
 

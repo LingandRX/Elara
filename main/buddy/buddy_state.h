@@ -1,7 +1,7 @@
 /**
  * @file buddy_state.h
  * Buddy 核心状态机
- * 管理 7 种 Persona 状态、AI 会话数据、审批提示
+ * 管理 7 种 Persona 状态、会话数据
  */
 
 #ifndef BUDDY_STATE_H
@@ -40,12 +40,6 @@ typedef struct {
     char     lines[8][92];
     uint8_t  n_lines;
     uint16_t line_gen;          /* 行变化时递增，用于 UI 重置滚动 */
-    char     prompt_id[40];     /* 待审批请求 ID；空 = 无审批 */
-    char     prompt_tool[20];
-    char     prompt_hint[44];
-    uint8_t  usage_rolling;     /* 套餐用量 0-100 (滚动窗口), 0xFF=未知 */
-    uint8_t  usage_weekly;      /* 每周用量 0-100, 0xFF=未知 */
-    uint8_t  usage_monthly;     /* 每月用量 0-100, 0xFF=未知 */
 } SessionState;
 
 /* 全局状态 */
@@ -57,9 +51,6 @@ typedef struct {
     bool         screen_off;
     bool         napping;
     uint32_t     nap_start_ms;
-    uint32_t     prompt_arrived_ms;
-    bool         response_sent;
-    char         last_prompt_id[40];
     uint16_t     last_line_gen;
     uint8_t      msg_scroll;
     uint32_t     wake_transition_until_ms;
@@ -129,10 +120,6 @@ const char*    buddy_state_name(PersonaState s);
 /* 时间同步 */
 bool buddy_rtc_valid(void);
 void buddy_set_rtc_valid(bool v);
-
-/* 提示处理 */
-bool buddy_has_pending_prompt(void);
-void buddy_clear_prompt(void);
 
 /* 发送命令到上位机 */
 void buddy_send_cmd(const char *json);

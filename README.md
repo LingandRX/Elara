@@ -1,14 +1,14 @@
 # Elara
 
-基于 ESP32-S3 的 AI 桌面伴侣与宠物交互终端，使用 LVGL 图形库实现 Buddy 状态机 UI 与 Petdex 动画。
+基于 ESP32-S3 的桌面宠物交互终端，使用 LVGL 图形库实现 Buddy 状态机 UI 与 **ASCII 角色动画**（图片播放已移除）。
 
 ## 特性
 
 - 🎨 **LVGL 图形界面**: 使用 LVGL ^8.4.0 实现 Buddy 主界面与动画
-- 🐾 **Petdex 宠物动画系统**: 内置多种状态动作，支持大图与序列帧双模式
+- 🐾 **ASCII 角色动画**: 18 种角色 × 7 种状态，纯 CPU 字符画渲染（无 GPU 依赖）
 - 👆 **触摸交互**: 支持电容式触摸屏手势与控制（CST816T）
 - 📡 **双模通信**: 支持 USB-Serial 串口与 WiFi/TCP 网络通信（端口 8080）
-- 🚀 **精灵图自动切图上传**: 提供上位机工具，支持 WebP/PNG 一键本地切图并上传至设备 LittleFS 存储
+- 🚀 **文件上传**: 上位机工具支持向设备 LittleFS 传输文件
 
 ## 硬件
 
@@ -17,37 +17,27 @@
 - **触摸**: 电容式触摸屏 (CST816T)
 - **存储**: 16MB Flash, 8MB PSRAM（分区表含 factory + storage/LittleFS）
 
-## 上位机工具与精灵图上传
+## 上位机工具
 
 项目提供 Python 客户端脚本 `tools/elara_host.py`。
 
-### 1. 精灵图一键切图与上传 (WiFi/TCP)
+> **说明**：设备已移除图片/精灵图播放（Petdex），主页统一使用 **ASCII 角色动画**。
+> `petdex` 与 `upload-sheet` 命令已下线；`upload` 仍可用于传输任意文件。
+
+### 常用上位机控制命令
 
 ```bash
-# 默认上传全部动作序列帧至设备
-python tools/elara_host.py --host <设备IP> upload-sheet --file spritesheet.webp
-
-# 自定义精灵名称（前缀路径）
-python tools/elara_host.py --host <设备IP> upload-sheet --file spritesheet.webp --name mypet
-
-# 自定义帧分辨率 (默认 96x104)
-python tools/elara_host.py --host <设备IP> upload-sheet --file spritesheet.webp --width 96 --height 104
-```
-
-### 2. 常用上位机控制命令
-
-```bash
-# 切换 Petdex 动画状态
-python tools/elara_host.py --host <设备IP> petdex --state "Run Right"
-
 # 设置 Wi-Fi（会写入 NVS；无出厂硬编码凭据）
 python tools/elara_host.py --host <设备IP> wifi --ssid "MyWiFi" --password "12345678"
+
+# 上传文件到设备
+python tools/elara_host.py --host <设备IP> upload --file firmware.bin --path firmware.bin
 
 # 交互式控制台模式
 python tools/elara_host.py --host <设备IP>
 ```
 
-> 说明：旧版 `{"type":"chat"}` / `{"type":"status"}` 命令不再入设备命令队列；设备侧主路径为 Buddy JSON（session/prompt/time 等）。详见 [上位机通信协议](docs/上位机通信协议.md)。
+> 说明：旧版 `{"type":"chat"}` / `{"type":"status"}` 命令不再入设备命令队列；设备侧主路径为会话 JSON（session/time 等）。详见 [上位机通信协议](docs/上位机通信协议.md)。
 
 ## 快速开始
 
@@ -85,7 +75,7 @@ Elara/
 ├── main/                    # 主程序
 │   ├── display/            # 显示端口 (lv_port_disp / ST7789 / 背光)
 │   ├── input/              # 触摸输入 (CST816T → LVGL)
-│   ├── ui/                 # Buddy / Petdex / WiFi UI（lvgl_chat_ui 遗留未链接）
+│   ├── ui/                 # Buddy（ASCII 动画）/ WiFi UI
 │   ├── buddy/              # Buddy 状态机与统计
 │   ├── battery/            # 电池监测
 │   ├── comm/               # UART / TCP / SNTP / 上传

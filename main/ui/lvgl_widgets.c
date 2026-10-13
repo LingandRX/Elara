@@ -4,6 +4,7 @@
  */
 
 #include "lvgl_widgets.h"
+#include "buddy_theme.h"
 #include "lvgl.h"
 #include <string.h>
 
@@ -11,8 +12,6 @@
 #define COLOR_USER_BUB     lv_color_hex(0x007ACC)      /* 用户蓝色 */
 #define COLOR_AI_BUB       lv_color_hex(0x2D2D37)      /* AI 深灰 */
 #define COLOR_SYS_BUB      lv_color_hex(0x464650)       /* 系统灰 */
-#define COLOR_TEXT         lv_color_hex(0xFFFFFF)       /* 白色文字 */
-#define COLOR_TEXT_DIM     lv_color_hex(0xA0A0AA)       /* 暗淡文字 */
 #define COLOR_LABEL_AI     lv_color_hex(0x64B4FF)       /* AI 标签色 */
 #define COLOR_LABEL_USER   lv_color_hex(0x78DCB4)       /* 用户标签色 */
 
@@ -57,14 +56,14 @@ lv_obj_t *lvgl_create_message_bubble(lv_obj_t *parent, const char *role, const c
     lv_obj_t *role_label = lv_label_create(bubble);
     lv_label_set_text(role_label, role_text);
     lv_obj_set_style_text_color(role_label, role_color, 0);
-    lv_obj_set_style_text_font(role_label, LV_FONT_DEFAULT, 0);
+    lv_obj_set_style_text_font(role_label, BUDDY_FONT_DEFAULT, 0);
     lv_obj_align(role_label, LV_ALIGN_TOP_LEFT, 0, 0);
 
     /* 消息文本 */
     lv_obj_t *msg_text = lv_label_create(bubble);
     lv_label_set_text(msg_text, text);
     lv_obj_set_style_text_color(msg_text, COLOR_TEXT, 0);
-    lv_obj_set_style_text_font(msg_text, LV_FONT_DEFAULT, 0);
+    lv_obj_set_style_text_font(msg_text, BUDDY_FONT_DEFAULT, 0);
     lv_label_set_long_mode(msg_text, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(msg_text, lv_obj_get_width(bubble) - 16);
     lv_obj_align(msg_text, LV_ALIGN_TOP_LEFT, 0, 16);
@@ -102,7 +101,7 @@ lv_obj_t *lvgl_create_status_indicator(lv_obj_t *parent, const char *state, lv_c
     lv_obj_t *label = lv_label_create(indicator);
     lv_label_set_text(label, state);
     lv_obj_set_style_text_color(label, COLOR_TEXT, 0);
-    lv_obj_set_style_text_font(label, LV_FONT_DEFAULT, 0);
+    lv_obj_set_style_text_font(label, BUDDY_FONT_DEFAULT, 0);
     lv_obj_align(label, LV_ALIGN_LEFT_MID, 22, 0);
 
     return indicator;
@@ -125,7 +124,7 @@ lv_obj_t *lvgl_create_animated_label(lv_obj_t *parent, const char *text) {
     lv_obj_t *label = lv_label_create(parent);
     lv_label_set_text(label, text);
     lv_obj_set_style_text_color(label, COLOR_TEXT, 0);
-    lv_obj_set_style_text_font(label, LV_FONT_DEFAULT, 0);
+    lv_obj_set_style_text_font(label, BUDDY_FONT_DEFAULT, 0);
 
     /* 添加淡入动画 */
     lv_anim_t a;

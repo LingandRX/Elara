@@ -17,11 +17,6 @@ extern "C" {
 
 typedef struct {
     uint32_t nap_seconds;
-    uint16_t approvals;
-    uint16_t denials;
-    uint16_t velocity[8];   /* 响应秒数环形缓冲区 */
-    uint8_t  vel_idx;
-    uint8_t  vel_count;
     uint8_t  level;
     uint32_t tokens;
 } BuddyStats;
@@ -34,7 +29,6 @@ typedef struct {
     bool hud;
     bool auto_sleep;    /* true=启用自动息屏, false=禁用 */
     uint8_t clock_rot;  /* 0=auto 1=portrait 2=landscape */
-    uint8_t pet_mode;   /* 0=ASCII pet, 1=动画 pet (精灵图) */
 } BuddySettings;
 
 /* 初始化 */
@@ -42,8 +36,6 @@ void buddy_stats_init(void);
 void buddy_settings_init(void);
 
 /* 统计操作 */
-void buddy_stats_on_approval(uint32_t seconds_to_respond);
-void buddy_stats_on_denial(void);
 void buddy_stats_on_bridge_tokens(uint32_t bridge_total);
 void buddy_stats_on_nap_end(uint32_t seconds);
 void buddy_stats_on_wake(void);
@@ -51,7 +43,6 @@ bool buddy_stats_poll_level_up(void);
 
 /* 查询 */
 BuddyStats*   buddy_stats_get(void);
-uint16_t      buddy_stats_median_velocity(void);
 uint8_t       buddy_stats_mood_tier(void);
 uint8_t       buddy_stats_energy_tier(void);
 uint8_t       buddy_stats_fed_progress(void);

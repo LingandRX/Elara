@@ -26,8 +26,6 @@ REQUIRED_FILES = [
     "main/input/lvgl_touch.h",
     "main/ui/buddy/buddy_ui.c",
     "main/ui/buddy/buddy_ui.h",
-    "main/ui/pet_ui.c",
-    "main/ui/pet_ui.h",
     "main/buddy/buddy_state.c",
     "main/buddy/buddy_state.h",
     "main/comm/uart_comm.c",
